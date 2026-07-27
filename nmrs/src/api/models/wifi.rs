@@ -1,11 +1,10 @@
 use std::fmt::Debug;
 
-use serde::{Deserialize, Serialize};
-use zeroize::ZeroizeOnDrop;
-
 use super::access_point::{AccessPoint, SecurityFeatures};
 use super::error::ConnectionError;
+use super::passphrase::Passphrase;
 use super::saved_connection::SavedConnectionBrief;
+use serde::{Deserialize, Serialize};
 
 /// Visible Wi-Fi access points grouped by interface and SSID for applet UIs.
 ///
@@ -857,97 +856,6 @@ impl EapOptionsBuilder {
             client_cert_path: self.client_cert_path,
             client_cert_blob: self.client_cert_blob,
         })
-    }
-}
-
-/// A memory-safe wrapper around [`String`] to protect secret passphrases.
-///
-/// Guarantees that the underlying memory is zeroized on [`Drop`], preventing the passphrase from
-/// leaking. Also hides the passphrase from [`Debug`].
-///
-/// # Usage
-/// Passphrase data should always be held within a [`Passphrase`] for as long as possible within
-/// its lifetime.
-///
-/// [`Passphrase::reveal`] exists for flexibility and returns the inner [`String`], but it forfeits
-/// the protection which this type provides - use with care.
-///
-/// # Examples
-/// ```
-/// use nmrs::Passphrase;
-/// use zeroize::Zeroize;
-///
-/// fn main() {
-///     let s: String = "password".to_string();
-///     let mut pass = Passphrase::from(s);
-///
-///     // Get the String back if needed.
-///     let mut revealed = pass.reveal();
-///
-///     // ...
-///
-///     // Revealed passphrases must be zeroized manually.
-///     revealed.zeroize();
-/// }
-/// ```
-#[derive(Clone, Default, Eq, PartialEq, ZeroizeOnDrop)]
-pub struct Passphrase(String);
-
-impl Passphrase {
-    pub fn new(passphrase: String) -> Self {
-        Passphrase(passphrase)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Moves the inner [`String`] outside of [`Passphrase`].
-    ///
-    /// # Security
-    /// * [`Debug`] is no longer protected.
-    /// * [`ZeroizeOnDrop`] will no longer apply since the inner [`String`] is returned so
-    ///   `zeroize()` *must* be called manually before [`Drop`] occurs:
-    /// ```
-    /// use nmrs::Passphrase;
-    /// use zeroize::Zeroize;
-    /// {
-    ///     let mut passphrase: Passphrase = Passphrase::new("password".to_string());
-    ///     let mut revealed = passphrase.reveal();
-    ///
-    ///     // ...
-    ///
-    ///     revealed.zeroize();
-    /// } // Dropped here  
-    /// ```
-    pub fn reveal(mut self) -> String {
-        std::mem::take(&mut self.0)
-    }
-
-    /// Returns a borrowed reference to the inner [`String`]. See [`Passphrase::reveal`] for moving
-    /// the inner value.
-    ///
-    /// # Security
-    /// The returned reference is **not** protected by zeroization or from being logged and should not be
-    /// cloned.
-    pub fn reveal_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Debug for Passphrase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Passphrase").field(&"[REDACTED]").finish()
-    }
-}
-
-impl From<String> for Passphrase {
-    fn from(s: String) -> Self {
-        Passphrase(s)
     }
 }
 

@@ -162,9 +162,10 @@ impl WifiConnectionBuilder {
     /// routers that advertise both WPA and WPA2.
     #[must_use]
     pub fn wpa_psk(mut self, psk: impl Into<Passphrase>) -> Self {
+        let psk = psk.into();
         let mut security = HashMap::new();
         security.insert("key-mgmt", Value::from("wpa-psk"));
-        security.insert("psk", Value::from(psk.into().reveal()));
+        security.insert("psk", Value::from(psk.expose_secret().to_owned()));
         security.insert("psk-flags", Value::from(0u32));
         security.insert("auth-alg", Value::from("open"));
 
@@ -215,7 +216,10 @@ impl WifiConnectionBuilder {
 
         match opts.method {
             EapMethod::Peap | EapMethod::Ttls => {
-                e1x.insert("password", Value::from(opts.password.reveal()));
+                e1x.insert(
+                    "password",
+                    Value::from(opts.password.expose_secret().to_owned()),
+                );
 
                 if let Some(ai) = opts.anonymous_identity {
                     e1x.insert("anonymous-identity", Value::from(ai));
@@ -235,7 +239,10 @@ impl WifiConnectionBuilder {
                 }
 
                 if let Some(password) = opts.private_key_password {
-                    e1x.insert("private-key-password", Value::from(password.reveal()));
+                    e1x.insert(
+                        "private-key-password",
+                        Value::from(password.expose_secret().to_owned()),
+                    );
                 }
 
                 if let Some(cert) =

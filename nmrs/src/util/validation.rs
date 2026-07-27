@@ -341,7 +341,7 @@ fn validate_wireguard_peer(peer: &WireGuardPeer) -> Result<(), ConnectionError> 
 
     // Validate preshared key if provided
     if let Some(ref psk) = peer.preshared_key {
-        validate_wireguard_key(psk.reveal_ref(), "Peer preshared key")?;
+        validate_wireguard_key(psk.expose_secret(), "Peer preshared key")?;
     }
 
     // Validate persistent keepalive if provided
@@ -500,7 +500,7 @@ pub fn validate_vpn_credentials(creds: &VpnCredentials) -> Result<(), Connection
     validate_wireguard_gateway(&creds.gateway, "VPN")?;
 
     // Validate private key
-    validate_wireguard_key(creds.private_key.reveal_ref(), "Private key")?;
+    validate_wireguard_key(creds.private_key.expose_secret(), "Private key")?;
 
     // Validate address (must be CIDR notation)
     validate_cidr(&creds.address)?;

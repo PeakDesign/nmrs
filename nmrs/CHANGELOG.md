@@ -4,6 +4,16 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `Passphrase` keeps Wi-Fi, OpenVPN, and WireGuard secrets redacted from debug
+  output and zeroizes their owned buffers when dropped. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
+
+### Changed
+
+- **Breaking:** Wi-Fi, OpenVPN, and WireGuard secret fields now use
+  `Passphrase` instead of `String`. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
+
 ### Fixed
 
 - Resolve Bluetooth devices through the BlueZ adapter that owns their address
@@ -12,11 +22,6 @@ All notable changes to the `nmrs` crate will be documented in this file.
 ## [3.4.1] - 2026-07-19
 ### Added
 
-- `AccessPoint::is_hidden()` and `NetworkSnapshot::hidden_access_points()`
-  expose access points for which NetworkManager did not report an SSID. ([#496](https://github.com/freedesktop-rs/nmrs/pull/496))
-- An isolated Docker-based NetworkManager integration harness, including
-  virtual WPA Wi-Fi coverage with `mac80211_hwsim`, keeps integration tests
-  separate from developer network profiles. ([#504](https://github.com/freedesktop-rs/nmrs/pull/504))
 - Isolated NetworkManager integration contracts now cover saved-profile events,
   secret-agent registration, wired DHCP activation, and virtual WPA Wi-Fi
   discovery/authentication/reconnection without touching developer profiles. ([#505](https://github.com/freedesktop-rs/nmrs/pull/505))
@@ -26,8 +31,6 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ### Changed
 
-- `NetworkSnapshot::wifi_groups()` now omits hidden access points; use
-  `hidden_access_points()` when those individually reported APs are needed. ([#494](https://github.com/freedesktop-rs/nmrs/pull/494), [#496](https://github.com/freedesktop-rs/nmrs/pull/496))
 - Network, device, and settings monitors now return only after their initial
   D-Bus subscriptions are installed, so a mutation immediately after startup
   cannot race the subscription task. ([#505](https://github.com/freedesktop-rs/nmrs/pull/505))
@@ -37,8 +40,6 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ### Fixed
 
-- Automatic Wi-Fi scans and readiness checks now skip unmanaged or unavailable
-  radios, selecting a usable managed device when one is present. ([#504](https://github.com/freedesktop-rs/nmrs/pull/504))
 - Preserve complete OpenVPN, VLAN, WireGuard, Bluetooth, Wi-Fi, and access-point
   settings when constructing or decoding NetworkManager payloads. ([#505](https://github.com/freedesktop-rs/nmrs/pull/505))
 - Preserve saved Wi-Fi profiles when stored-secret activation fails, while

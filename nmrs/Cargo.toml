@@ -25,7 +25,7 @@ base64.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 bitflags.workspace = true
-zeroize = { version = "1.9.0", features = ["aarch64", "derive", "std"] }
+zeroize.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

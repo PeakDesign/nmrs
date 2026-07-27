@@ -8,6 +8,7 @@ use super::config::*;
 use super::connection_state::*;
 use super::device::*;
 use super::error::*;
+use super::passphrase::Passphrase;
 use super::state_reason::*;
 use super::vpn::*;
 use super::wifi::*;

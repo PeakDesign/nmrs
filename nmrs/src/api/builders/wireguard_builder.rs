@@ -205,7 +205,7 @@ impl WireGuardBuilder {
         }
 
         // Validate private key
-        validate_wireguard_key(private_key.reveal_ref(), "Private key")?;
+        validate_wireguard_key(private_key.expose_secret(), "Private key")?;
 
         // Validate address
         let (ip, prefix) = validate_address(&address)?;
@@ -246,7 +246,10 @@ impl WireGuardBuilder {
 
         // Build wireguard section
         let mut wireguard = HashMap::new();
-        wireguard.insert("private-key", Value::from(private_key.reveal()));
+        wireguard.insert(
+            "private-key",
+            Value::from(private_key.expose_secret().to_owned()),
+        );
 
         // Build peers array
         let mut peers_array: Vec<HashMap<String, zvariant::Value<'static>>> = Vec::new();
@@ -259,7 +262,10 @@ impl WireGuardBuilder {
             peer_dict.insert("allowed-ips".into(), Value::from(peer.allowed_ips));
 
             if let Some(psk) = peer.preshared_key {
-                peer_dict.insert("preshared-key".into(), Value::from(psk.reveal()));
+                peer_dict.insert(
+                    "preshared-key".into(),
+                    Value::from(psk.expose_secret().to_owned()),
+                );
             }
 
             if let Some(ka) = peer.persistent_keepalive {

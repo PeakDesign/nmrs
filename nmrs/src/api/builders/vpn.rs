@@ -71,7 +71,7 @@ use zvariant::{Dict, Value, signature};
 use super::wireguard_builder::WireGuardBuilder;
 use crate::api::models::{
     ConnectionError, ConnectionOptions, OpenVpnAuthType, OpenVpnCompression, OpenVpnConfig,
-    OpenVpnProxy, VpnCredentials,
+    OpenVpnProxy, Passphrase, VpnCredentials,
 };
 
 /// Builds WireGuard VPN connection settings.
@@ -138,6 +138,16 @@ fn string_pairs_to_dict(
 fn push_opt_str(out: &mut Vec<(String, String)>, key: &str, value: Option<&String>) {
     if let Some(v) = value {
         out.push((key.to_string(), v.clone()));
+    }
+}
+
+/// Pushes a plaintext copy of a secret onto `out` if `value` is `Some`.
+///
+/// NetworkManager's VPN settings dictionary owns its strings, so the copy
+/// cannot retain the zeroization behavior of [`Passphrase`].
+fn push_opt_secret(out: &mut Vec<(String, String)>, key: &str, value: Option<&Passphrase>) {
+    if let Some(value) = value {
+        out.push((key.to_string(), value.expose_secret().to_owned()));
     }
 }
 
@@ -301,7 +311,7 @@ pub fn build_openvpn_connection(
                     vpn_data.push(("http-proxy-username".into(), u.clone()));
                 }
                 if let Some(p) = password {
-                    vpn_data.push(("http-proxy-password".into(), p.clone()));
+                    vpn_data.push(("http-proxy-password".into(), p.expose_secret().to_owned()));
                 }
             }
             OpenVpnProxy::Socks {
@@ -328,16 +338,8 @@ pub fn build_openvpn_connection(
     let data_dict = string_pairs_to_dict(vpn_data)?;
 
     let mut vpn_secrets: Vec<(String, String)> = Vec::new();
-    push_opt_display(
-        &mut vpn_secrets,
-        "password",
-        config.password.clone().map(|p| p.reveal()),
-    );
-    push_opt_display(
-        &mut vpn_secrets,
-        "cert-pass",
-        config.key_password.clone().map(|p| p.reveal()),
-    );
+    push_opt_secret(&mut vpn_secrets, "password", config.password.as_ref());
+    push_opt_secret(&mut vpn_secrets, "cert-pass", config.key_password.as_ref());
 
     let mut vpn: HashMap<&'static str, Value<'static>> = HashMap::new();
     vpn.insert(
