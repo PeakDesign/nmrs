@@ -12,11 +12,12 @@ use zvariant::{OwnedObjectPath, Value};
 
 use crate::Result;
 use crate::api::models::{ConnectionError, TimeoutConfig};
+use crate::core::bluetooth::resolve_bluez_device_path;
 use crate::core::connection::{disconnect_wifi_and_wait, get_device_by_interface};
 use crate::core::state_wait::wait_for_connection_activation;
 use crate::dbus::{NMDeviceProxy, NMProxy};
 use crate::types::constants::device_type;
-use crate::util::utils::{bluez_device_path, settings_proxy};
+use crate::util::utils::settings_proxy;
 
 fn connection_type_from_settings<'a>(
     settings: &'a HashMap<&str, HashMap<&str, Value<'_>>>,
@@ -98,25 +99,29 @@ fn bluetooth_bdaddr_from_settings(
         })
 }
 
-fn resolve_specific_object(
+fn explicit_specific_object(specific_object: Option<&str>) -> Result<Option<OwnedObjectPath>> {
+    specific_object
+        .map(|path| {
+            OwnedObjectPath::try_from(path).map_err(|error| ConnectionError::InvalidInput {
+                field: "specific_object".into(),
+                reason: error.to_string(),
+            })
+        })
+        .transpose()
+}
+
+async fn resolve_specific_object(
+    conn: &Connection,
     settings: &HashMap<&str, HashMap<&str, Value<'_>>>,
     specific_object: Option<&str>,
 ) -> Result<OwnedObjectPath> {
-    if let Some(path) = specific_object {
-        return OwnedObjectPath::try_from(path).map_err(|e| ConnectionError::InvalidInput {
-            field: "specific_object".into(),
-            reason: e.to_string(),
-        });
+    if let Some(path) = explicit_specific_object(specific_object)? {
+        return Ok(path);
     }
 
     if connection_type_from_settings(settings)? == "bluetooth" {
         let bdaddr = bluetooth_bdaddr_from_settings(settings)?;
-        return OwnedObjectPath::try_from(bluez_device_path(&bdaddr, None)).map_err(|e| {
-            ConnectionError::InvalidInput {
-                field: "specific_object".into(),
-                reason: e.to_string(),
-            }
-        });
+        return resolve_bluez_device_path(conn, &bdaddr, None).await;
     }
 
     Ok(OwnedObjectPath::default())
@@ -154,7 +159,7 @@ pub(crate) async fn add_and_activate_connection(
     timeout_config: TimeoutConfig,
 ) -> Result<(OwnedObjectPath, OwnedObjectPath)> {
     let device = resolve_device_path(conn, &settings, interface).await?;
-    let specific_object = resolve_specific_object(&settings, specific_object)?;
+    let specific_object = resolve_specific_object(conn, &settings, specific_object).await?;
 
     if device.as_str() != "/" {
         disconnect_wifi_and_wait(conn, &device, Some(timeout_config)).await?;
@@ -301,25 +306,21 @@ mod tests {
     }
 
     #[test]
-    fn resolve_specific_object_defaults_to_root_path() {
-        let settings = sample_wifi_settings();
-        let path = resolve_specific_object(&settings, None).unwrap();
-        assert_eq!(path.as_str(), "/");
+    fn explicit_specific_object_returns_none_when_omitted() {
+        assert!(explicit_specific_object(None).unwrap().is_none());
     }
 
     #[test]
-    fn resolve_specific_object_parses_explicit_path() {
-        let settings = sample_wifi_settings();
-        let path =
-            resolve_specific_object(&settings, Some("/org/freedesktop/NetworkManager/Devices/3"))
-                .unwrap();
+    fn explicit_specific_object_parses_path() {
+        let path = explicit_specific_object(Some("/org/freedesktop/NetworkManager/Devices/3"))
+            .unwrap()
+            .expect("explicit path");
         assert_eq!(path.as_str(), "/org/freedesktop/NetworkManager/Devices/3");
     }
 
     #[test]
-    fn resolve_specific_object_rejects_invalid_explicit_path() {
-        let settings = sample_wifi_settings();
-        let error = resolve_specific_object(&settings, Some("not/an/object/path")).unwrap_err();
+    fn explicit_specific_object_rejects_invalid_path() {
+        let error = explicit_specific_object(Some("not/an/object/path")).unwrap_err();
 
         match error {
             ConnectionError::InvalidInput { field, reason } => {
@@ -331,23 +332,5 @@ mod tests {
             }
             other => panic!("expected InvalidInput, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn resolve_specific_object_derives_bluez_device_path() {
-        let settings = sample_bluetooth_settings(Some(Value::from("00:1A:7D:DA:71:13")));
-        let path = resolve_specific_object(&settings, None).unwrap();
-
-        assert_eq!(path.as_str(), "/org/bluez/hci0/dev_00_1A_7D_DA_71_13");
-    }
-
-    #[test]
-    fn resolve_specific_object_requires_bluetooth_address() {
-        let settings = sample_bluetooth_settings(None);
-        assert_invalid_input(
-            resolve_specific_object(&settings, None).unwrap_err(),
-            "bluetooth.bdaddr",
-            "bluetooth settings are missing bdaddr",
-        );
     }
 }

@@ -269,25 +269,6 @@ pub(crate) async fn extract_connection_state_reason(
     }
 }
 
-/// Constructs a BlueZ D-Bus object path from a Bluetooth device address.
-///
-/// Uses the given adapter name (e.g. `"hci0"`) or defaults to `"hci0"`
-/// when `None` is provided.
-///
-/// # Example
-///
-/// ```ignore
-/// bluez_device_path("00:1A:7D:DA:71:13", None)
-/// // => "/org/bluez/hci0/dev_00_1A_7D_DA_71_13"
-///
-/// bluez_device_path("00:1A:7D:DA:71:13", Some("hci1"))
-/// // => "/org/bluez/hci1/dev_00_1A_7D_DA_71_13"
-/// ```
-pub(crate) fn bluez_device_path(bdaddr: &str, adapter: Option<&str>) -> String {
-    let adapter = adapter.unwrap_or("hci0");
-    format!("/org/bluez/{adapter}/dev_{}", bdaddr.replace(':', "_"))
-}
-
 /// Macro to convert Result to Option with error logging.
 /// Usage: `try_log!(result, "context message")?`
 #[macro_export]
@@ -441,17 +422,5 @@ mod tests {
         assert_eq!(strength_or_zero(Some(0)), 0);
         assert_eq!(strength_or_zero(Some(100)), 100);
         assert_eq!(strength_or_zero(None), 0);
-    }
-
-    #[test]
-    fn test_bluez_device_path() {
-        assert_eq!(
-            bluez_device_path("00:1A:7D:DA:71:13", None),
-            "/org/bluez/hci0/dev_00_1A_7D_DA_71_13"
-        );
-        assert_eq!(
-            bluez_device_path("00:1A:7D:DA:71:13", Some("hci1")),
-            "/org/bluez/hci1/dev_00_1A_7D_DA_71_13"
-        )
     }
 }

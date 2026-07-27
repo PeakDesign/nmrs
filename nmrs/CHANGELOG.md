@@ -4,6 +4,11 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve Bluetooth devices through the BlueZ adapter that owns their address
+  instead of assuming the adapter is `hci0`. ([#501](https://github.com/freedesktop-rs/nmrs/pull/501))
+
 ## [3.4.1] - 2026-07-19
 ### Added
 
