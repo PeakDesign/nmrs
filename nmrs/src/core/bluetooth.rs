@@ -8,6 +8,7 @@
 
 use log::{debug, trace};
 use zbus::Connection;
+use zbus::fdo::{ManagedObjects, ObjectManagerProxy};
 use zvariant::OwnedObjectPath;
 // use futures_timer::Delay;
 
@@ -20,13 +21,62 @@ use crate::monitoring::bluetooth::Bluetooth;
 use crate::monitoring::transport::ActiveTransport;
 use crate::types::constants::device_state;
 use crate::types::constants::device_type;
-use crate::util::utils::bluez_device_path;
 use crate::util::validation::validate_bluetooth_address;
 use crate::{
     Result,
     dbus::NMProxy,
     models::{BluetoothIdentity, TimeoutConfig},
 };
+
+const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
+
+fn bluez_device_path_for_adapter(bdaddr: &str, adapter: &str) -> Result<OwnedObjectPath> {
+    OwnedObjectPath::try_from(format!(
+        "/org/bluez/{adapter}/dev_{}",
+        bdaddr.replace(':', "_")
+    ))
+    .map_err(|error| ConnectionError::InvalidAddress(format!("Invalid BlueZ device path: {error}")))
+}
+
+fn find_bluez_device_path(objects: &ManagedObjects, bdaddr: &str) -> Option<OwnedObjectPath> {
+    objects.iter().find_map(|(path, interfaces)| {
+        let properties = interfaces.get(BLUEZ_DEVICE_INTERFACE)?;
+        let address = <&str>::try_from(properties.get("Address")?).ok()?;
+        address.eq_ignore_ascii_case(bdaddr).then(|| path.clone())
+    })
+}
+
+async fn bluez_managed_objects(conn: &Connection) -> Result<ManagedObjects> {
+    let manager = ObjectManagerProxy::builder(conn)
+        .destination("org.bluez")
+        .map_err(|error| ConnectionError::BluezUnavailable(error.to_string()))?
+        .path("/")
+        .map_err(|error| ConnectionError::BluezUnavailable(error.to_string()))?
+        .build()
+        .await
+        .map_err(|error| {
+            ConnectionError::BluezUnavailable(format!("failed to connect to BlueZ: {error}"))
+        })?;
+
+    manager.get_managed_objects().await.map_err(|error| {
+        ConnectionError::BluezUnavailable(format!("failed to enumerate BlueZ objects: {error}"))
+    })
+}
+
+pub(crate) async fn resolve_bluez_device_path(
+    conn: &Connection,
+    bdaddr: &str,
+    adapter: Option<&str>,
+) -> Result<OwnedObjectPath> {
+    validate_bluetooth_address(bdaddr)?;
+
+    if let Some(adapter) = adapter {
+        return bluez_device_path_for_adapter(bdaddr, adapter);
+    }
+
+    let objects = bluez_managed_objects(conn).await?;
+    find_bluez_device_path(&objects, bdaddr).ok_or(ConnectionError::NoBluetoothDevice)
+}
 
 /// Populated Bluetooth device information via BlueZ.
 ///
@@ -47,7 +97,16 @@ pub(crate) async fn populate_bluez_info(
 ) -> Result<(Option<String>, Option<String>)> {
     validate_bluetooth_address(bdaddr)?;
 
-    let bluez_path = bluez_device_path(bdaddr, adapter);
+    let bluez_path = match resolve_bluez_device_path(conn, bdaddr, adapter).await {
+        Ok(path) => path,
+        Err(
+            error @ (ConnectionError::NoBluetoothDevice | ConnectionError::BluezUnavailable(_)),
+        ) => {
+            trace!("Could not resolve BlueZ metadata path for {bdaddr}: {error}");
+            return Ok((None, None));
+        }
+        Err(error) => return Err(error),
+    };
 
     match BluezDeviceExtProxy::builder(conn)
         .path(bluez_path)?
@@ -143,11 +202,8 @@ pub(crate) async fn connect_bluetooth(
     // Check for saved connection
     let saved = get_saved_connection_path(conn, name).await?;
 
-    let specific_object = OwnedObjectPath::try_from(bluez_device_path(
-        &settings.bdaddr,
-        settings.adapter.as_deref(),
-    ))
-    .map_err(|e| ConnectionError::InvalidAddress(format!("Invalid BlueZ path: {e}")))?;
+    let specific_object =
+        resolve_bluez_device_path(conn, &settings.bdaddr, settings.adapter.as_deref()).await?;
 
     match saved {
         Some(saved_path) => {
@@ -234,4 +290,64 @@ pub(crate) async fn disconnect_bluetooth_and_wait(
     // Delay::new(timeouts::stabilization_delay()).await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use zbus::names::OwnedInterfaceName;
+    use zvariant::{OwnedValue, Str};
+
+    use super::*;
+
+    fn managed_device(
+        path: &str,
+        address: &str,
+    ) -> (
+        OwnedObjectPath,
+        HashMap<OwnedInterfaceName, HashMap<String, OwnedValue>>,
+    ) {
+        let properties =
+            HashMap::from([("Address".to_string(), OwnedValue::from(Str::from(address)))]);
+        let interfaces = HashMap::from([(
+            OwnedInterfaceName::try_from(BLUEZ_DEVICE_INTERFACE).expect("valid interface name"),
+            properties,
+        )]);
+        (
+            OwnedObjectPath::try_from(path).expect("valid object path"),
+            interfaces,
+        )
+    }
+
+    #[test]
+    fn formats_path_for_explicit_adapter() {
+        let path =
+            bluez_device_path_for_adapter("00:1A:7D:DA:71:13", "hci1").expect("valid BlueZ path");
+
+        assert_eq!(path.as_str(), "/org/bluez/hci1/dev_00_1A_7D_DA_71_13");
+    }
+
+    #[test]
+    fn finds_device_path_on_matching_adapter_case_insensitively() {
+        let objects = HashMap::from([
+            managed_device("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "AA:BB:CC:DD:EE:FF"),
+            managed_device("/org/bluez/hci1/dev_00_1A_7D_DA_71_13", "00:1A:7D:DA:71:13"),
+        ]);
+
+        let path =
+            find_bluez_device_path(&objects, "00:1a:7d:da:71:13").expect("matching BlueZ device");
+
+        assert_eq!(path.as_str(), "/org/bluez/hci1/dev_00_1A_7D_DA_71_13");
+    }
+
+    #[test]
+    fn returns_none_when_bluez_device_is_absent() {
+        let objects = HashMap::from([managed_device(
+            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF",
+            "AA:BB:CC:DD:EE:FF",
+        )]);
+
+        assert!(find_bluez_device_path(&objects, "00:1A:7D:DA:71:13").is_none());
+    }
 }
