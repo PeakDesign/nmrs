@@ -9,7 +9,6 @@ use uuid::Uuid;
 use zvariant::Value;
 
 use super::connection_builder::{ConnectionBuilder, IpConfig};
-use crate::Passphrase;
 use crate::api::models::{ConnectionError, ConnectionOptions, WireGuardPeer};
 
 /// Builder for WireGuard VPN connections.
@@ -30,7 +29,7 @@ use crate::api::models::{ConnectionError, ConnectionOptions, WireGuardPeer};
 /// ).with_persistent_keepalive(25);
 ///
 /// let settings = WireGuardBuilder::new("MyVPN")
-///     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=".to_string())
+///     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=")
 ///     .address("10.0.0.2/24")
 ///     .add_peer(peer)
 ///     .autoconnect(false)
@@ -41,7 +40,7 @@ use crate::api::models::{ConnectionError, ConnectionOptions, WireGuardPeer};
 pub struct WireGuardBuilder {
     inner: ConnectionBuilder,
     name: String,
-    private_key: Option<Passphrase>,
+    private_key: Option<String>,
     address: Option<String>,
     peers: Vec<WireGuardPeer>,
     dns: Option<Vec<String>>,
@@ -76,7 +75,7 @@ impl WireGuardBuilder {
     ///
     /// The key must be a valid base64-encoded 32-byte WireGuard key (44 characters).
     #[must_use]
-    pub fn private_key(mut self, key: impl Into<Passphrase>) -> Self {
+    pub fn private_key(mut self, key: impl Into<String>) -> Self {
         self.private_key = Some(key.into());
         self
     }
@@ -205,7 +204,7 @@ impl WireGuardBuilder {
         }
 
         // Validate private key
-        validate_wireguard_key(private_key.expose_secret(), "Private key")?;
+        validate_wireguard_key(&private_key, "Private key")?;
 
         // Validate address
         let (ip, prefix) = validate_address(&address)?;
@@ -246,10 +245,7 @@ impl WireGuardBuilder {
 
         // Build wireguard section
         let mut wireguard = HashMap::new();
-        wireguard.insert(
-            "private-key",
-            Value::from(private_key.expose_secret().to_owned()),
-        );
+        wireguard.insert("private-key", Value::from(private_key));
 
         // Build peers array
         let mut peers_array: Vec<HashMap<String, zvariant::Value<'static>>> = Vec::new();
@@ -262,10 +258,7 @@ impl WireGuardBuilder {
             peer_dict.insert("allowed-ips".into(), Value::from(peer.allowed_ips));
 
             if let Some(psk) = peer.preshared_key {
-                peer_dict.insert(
-                    "preshared-key".into(),
-                    Value::from(psk.expose_secret().to_owned()),
-                );
+                peer_dict.insert("preshared-key".into(), Value::from(psk));
             }
 
             if let Some(ka) = peer.persistent_keepalive {
@@ -481,7 +474,7 @@ mod tests {
         address: &str,
     ) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
         WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address(address)
             .add_peer(create_test_peer())
             .autoconnect(false)
@@ -516,10 +509,10 @@ mod tests {
 
     #[test]
     fn serializes_complete_peer_payload() {
-        let peer = create_test_peer()
-            .with_preshared_key("PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=".to_string());
+        let peer =
+            create_test_peer().with_preshared_key("PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=");
         let settings = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(peer)
             .build()
@@ -584,7 +577,7 @@ mod tests {
     #[test]
     fn requires_address() {
         let result = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .add_peer(create_test_peer())
             .build();
 
@@ -597,7 +590,7 @@ mod tests {
     #[test]
     fn requires_at_least_one_peer() {
         let result = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .build();
 
@@ -610,7 +603,7 @@ mod tests {
     #[test]
     fn adds_dns_servers() {
         let settings = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(create_test_peer())
             .dns(vec!["1.1.1.1".into(), "2001:4860:4860::8888".into()])
@@ -637,7 +630,7 @@ mod tests {
     #[test]
     fn sets_mtu() {
         let settings = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(create_test_peer())
             .mtu(1420)
@@ -661,7 +654,7 @@ mod tests {
         };
 
         let settings = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peers(vec![peer1, peer2])
             .build()
@@ -758,7 +751,7 @@ mod tests {
     #[test]
     fn rejects_invalid_ip_and_dns_addresses() {
         let invalid_address = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("fd00::xyz/64")
             .add_peer(create_test_peer())
             .build();
@@ -769,7 +762,7 @@ mod tests {
         ));
 
         let invalid_dns = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(create_test_peer())
             .dns(vec!["not-an-address".into()])
@@ -793,7 +786,7 @@ mod tests {
             let mut peer = create_test_peer();
             peer.gateway = gateway.into();
             let result = WireGuardBuilder::new("TestVPN")
-                .private_key(PRIVATE_KEY.to_string())
+                .private_key(PRIVATE_KEY)
                 .address("10.0.0.2/24")
                 .add_peer(peer)
                 .build();
@@ -809,7 +802,7 @@ mod tests {
         let mut peer = create_test_peer();
         peer.public_key = "!".repeat(44);
         let result = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(peer)
             .build();
@@ -822,7 +815,7 @@ mod tests {
         let mut peer = create_test_peer();
         peer.allowed_ips.clear();
         let result = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(peer)
             .build();
@@ -834,7 +827,7 @@ mod tests {
         let mut peer = create_test_peer();
         peer.gateway = "[2001:db8::1]:51820".into();
         let settings = WireGuardBuilder::new("TestVPN")
-            .private_key(PRIVATE_KEY.to_string())
+            .private_key(PRIVATE_KEY)
             .address("fd00::2/64")
             .add_peer(peer)
             .build()

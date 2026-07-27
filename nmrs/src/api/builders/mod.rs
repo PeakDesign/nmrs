@@ -46,13 +46,13 @@
 //!
 //! ```rust
 //! use nmrs::builders::{build_ethernet_connection, build_wifi_connection};
-//! use nmrs::{ConnectionOptions, Passphrase, WifiSecurity};
+//! use nmrs::{ConnectionOptions, WifiSecurity};
 //!
 //! let opts = ConnectionOptions::new(true).with_priority(10);
 //!
 //! let wifi = build_wifi_connection(
 //!     "MyNetwork",
-//!     &WifiSecurity::WpaPsk { psk: Passphrase::new("password".to_string()) },
+//!     &WifiSecurity::WpaPsk { psk: "password".into() },
 //!     &opts,
 //! );
 //! let eth = build_ethernet_connection("eth0", &opts);
@@ -62,12 +62,12 @@
 //!
 //! ```no_run
 //! use nmrs::builders::{WifiConnectionBuilder, WifiMode};
-//! use nmrs::{NetworkManager, Passphrase};
+//! use nmrs::NetworkManager;
 //!
 //! # async fn example() -> nmrs::Result<()> {
 //! let nm = NetworkManager::new().await?;
 //! let settings = WifiConnectionBuilder::new("Hotspot")
-//!     .wpa_psk(Passphrase::new("password".to_string()))
+//!     .wpa_psk("password")
 //!     .mode(WifiMode::Ap)
 //!     .ipv4_shared()
 //!     .build();
@@ -91,7 +91,7 @@
 //! ).with_persistent_keepalive(25);
 //!
 //! let settings = WireGuardBuilder::new("MyVPN")
-//!     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=".to_string())
+//!     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=")
 //!     .address("10.0.0.2/24")
 //!     .add_peer(peer)
 //!     .dns(vec!["1.1.1.1".into()])

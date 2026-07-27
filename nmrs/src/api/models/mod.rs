@@ -9,7 +9,6 @@ mod error;
 mod monitor;
 mod network_event;
 mod openvpn;
-mod passphrase;
 mod radio;
 mod saved_connection;
 pub(crate) mod snapshot;
@@ -18,6 +17,20 @@ mod vlan;
 mod vpn;
 mod wifi;
 mod wireguard;
+
+use std::fmt;
+
+pub(crate) struct Redacted;
+
+impl fmt::Debug for Redacted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("[REDACTED]")
+    }
+}
+
+pub(crate) fn redact_option<T>(value: &Option<T>) -> Option<Redacted> {
+    value.as_ref().map(|_| Redacted)
+}
 
 #[cfg(test)]
 #[path = "tests.rs"]
@@ -34,7 +47,6 @@ pub use error::*;
 pub use monitor::*;
 pub use network_event::*;
 pub use openvpn::*;
-pub use passphrase::*;
 pub use radio::*;
 pub use saved_connection::*;
 pub use snapshot::{AppletNetworkSummary, NetworkSnapshot};

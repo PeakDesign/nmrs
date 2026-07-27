@@ -1,10 +1,11 @@
-use std::fmt::Debug;
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
 
 use super::access_point::{AccessPoint, SecurityFeatures};
 use super::error::ConnectionError;
-use super::passphrase::Passphrase;
 use super::saved_connection::SavedConnectionBrief;
-use serde::{Deserialize, Serialize};
+use super::{Redacted, redact_option};
 
 /// Visible Wi-Fi access points grouped by interface and SSID for applet UIs.
 ///
@@ -201,9 +202,9 @@ pub enum Phase2 {
 /// ## PEAP with MSCHAPv2 (Common Corporate Setup)
 ///
 /// ```rust
-/// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{EapOptions, EapMethod, Phase2};
 ///
-/// let opts = EapOptions::new("employee@company.com", Passphrase::new("my_password".to_string()))
+/// let opts = EapOptions::new("employee@company.com", "my_password")
 ///     .with_anonymous_identity("anonymous@company.com")
 ///     .with_domain_suffix_match("company.com")
 ///     .with_system_ca_certs(true)  // Use system certificate store
@@ -214,20 +215,20 @@ pub enum Phase2 {
 /// ## TTLS with PAP (Alternative Setup)
 ///
 /// ```rust
-/// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{EapOptions, EapMethod, Phase2};
 ///
-/// let opts = EapOptions::new("student@university.edu", Passphrase::new("password".to_string()))
+/// let opts = EapOptions::new("student@university.edu", "password")
 ///     .with_ca_cert_path("file:///etc/ssl/certs/university-ca.pem")
 ///     .with_method(EapMethod::Ttls)
 ///     .with_phase2(Phase2::Pap);
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EapOptions {
     /// User identity (usually email or username)
     pub identity: String,
     /// PEAP/TTLS: Password for authentication
-    pub password: Passphrase,
+    pub password: String,
     /// PEAP/TTLS: Anonymous outer identity (for privacy)
     pub anonymous_identity: Option<String>,
     /// Domain to match against server certificate
@@ -247,18 +248,43 @@ pub struct EapOptions {
     /// TLS: Private key of the client certificate encoded as PEM or PKCS#12, mutually exclusive with `private_key_path`
     pub private_key_blob: Option<Vec<u8>>,
     /// TLS: Password for the private key file
-    pub private_key_password: Option<Passphrase>,
+    pub private_key_password: Option<String>,
     /// TLS: Path to the client certificate file (file:// URL), mutually exclusive with `client_cert_blob`
     pub client_cert_path: Option<String>,
     /// TLS: Client certificate encoded as DER or PKCS#12, mutually exclusive with `client_cert_path`
     pub client_cert_blob: Option<Vec<u8>>,
 }
 
+impl fmt::Debug for EapOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EapOptions")
+            .field("identity", &self.identity)
+            .field("password", &Redacted)
+            .field("anonymous_identity", &self.anonymous_identity)
+            .field("domain_suffix_match", &self.domain_suffix_match)
+            .field("ca_cert_path", &self.ca_cert_path)
+            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("system_ca_certs", &self.system_ca_certs)
+            .field("method", &self.method)
+            .field("phase2", &self.phase2)
+            .field("private_key_path", &self.private_key_path)
+            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field(
+                "private_key_password",
+                &redact_option(&self.private_key_password),
+            )
+            .field("client_cert_path", &self.client_cert_path)
+            .field("client_cert_blob", &self.client_cert_blob)
+            .finish()
+    }
+}
+
 impl Default for EapOptions {
     fn default() -> Self {
         Self {
             identity: String::new(),
-            password: Passphrase::default(),
+            password: String::new(),
             anonymous_identity: None,
             domain_suffix_match: None,
             ca_cert_path: None,
@@ -281,13 +307,13 @@ impl EapOptions {
     /// # Examples
     ///
     /// ```rust
-    /// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+    /// use nmrs::{EapOptions, EapMethod, Phase2};
     ///
-    /// let opts = EapOptions::new("user@example.com", Passphrase::new("password".to_string()))
+    /// let opts = EapOptions::new("user@example.com", "password")
     ///     .with_method(EapMethod::Peap)
     ///     .with_phase2(Phase2::Mschapv2);
     /// ```
-    pub fn new(identity: impl Into<String>, password: impl Into<Passphrase>) -> Self {
+    pub fn new(identity: impl Into<String>, password: impl Into<String>) -> Self {
         Self {
             identity: identity.into(),
             password: password.into(),
@@ -303,7 +329,7 @@ impl EapOptions {
     /// use nmrs::{EapOptions, EapMethod};
     ///
     /// let opts = EapOptions::new_tls_path("user@example.com", "file:///etc/ssl/private/client.key", "file:///etc/ssl/certs/client.crt")
-    ///     .with_private_key_password("password".to_string())
+    ///     .with_private_key_password("password")
     ///     .with_ca_cert_path("file:///etc/ssl/certs/ca.pem");
     /// ```
     pub fn new_tls_path(
@@ -332,7 +358,7 @@ impl EapOptions {
     /// use nmrs::{EapOptions, EapMethod};
     ///
     /// let opts = EapOptions::new_tls_blob("user@example.com", vec![], vec![])
-    ///     .with_private_key_password("password".to_string())
+    ///     .with_private_key_password("password")
     ///     .with_ca_cert_blob(vec![]);
     /// ```
     pub fn new_tls_blob(
@@ -357,11 +383,11 @@ impl EapOptions {
     /// # Examples
     ///
     /// ```rust
-    /// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+    /// use nmrs::{EapOptions, EapMethod, Phase2};
     ///
     /// let opts = EapOptions::builder()
     ///     .identity("user@company.com")
-    ///     .password(Passphrase::new("my_password".to_string()))
+    ///     .password("my_password")
     ///     .method(EapMethod::Peap)
     ///     .phase2(Phase2::Mschapv2)
     ///     .domain_suffix_match("company.com")
@@ -431,7 +457,7 @@ impl EapOptions {
 
     /// Sets the password for the private key file.
     #[must_use]
-    pub fn with_private_key_password(mut self, password: impl Into<Passphrase>) -> Self {
+    pub fn with_private_key_password(mut self, password: impl Into<String>) -> Self {
         self.private_key_password = Some(password.into());
         self
     }
@@ -447,11 +473,11 @@ impl EapOptions {
 /// ## PEAP with MSCHAPv2 (Common Corporate Setup)
 ///
 /// ```rust
-/// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{EapOptions, EapMethod, Phase2};
 ///
 /// let opts = EapOptions::builder()
 ///     .identity("employee@company.com")
-///     .password(Passphrase::new("my_password".to_string()))
+///     .password("my_password")
 ///     .method(EapMethod::Peap)
 ///     .phase2(Phase2::Mschapv2)
 ///     .anonymous_identity("anonymous@company.com")
@@ -464,11 +490,11 @@ impl EapOptions {
 /// ## TTLS with PAP
 ///
 /// ```rust
-/// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{EapOptions, EapMethod, Phase2};
 ///
 /// let opts = EapOptions::builder()
 ///     .identity("student@university.edu")
-///     .password(Passphrase::new("password".to_string()))
+///     .password("password")
 ///     .method(EapMethod::Ttls)
 ///     .phase2(Phase2::Pap)
 ///     .ca_cert_path("file:///etc/ssl/certs/university-ca.pem")
@@ -485,16 +511,16 @@ impl EapOptions {
 ///     .identity("student@university.edu")
 ///     .method(EapMethod::Tls)
 ///     .private_key_path("file:///etc/ssl/private/student.key")
-///     .private_key_password("password".to_string())
+///     .private_key_password("password")
 ///     .client_cert_path("file:///etc/ssl/certs/student.crt")
 ///     .ca_cert_path("file:///etc/ssl/certs/university-ca.pem")
 ///     .build()
 ///     .expect("all required fields set");
 /// ```
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct EapOptionsBuilder {
     identity: Option<String>,
-    password: Option<Passphrase>,
+    password: Option<String>,
     anonymous_identity: Option<String>,
     domain_suffix_match: Option<String>,
     ca_cert_path: Option<String>,
@@ -504,9 +530,34 @@ pub struct EapOptionsBuilder {
     phase2: Option<Phase2>,
     private_key_path: Option<String>,
     private_key_blob: Option<Vec<u8>>,
-    private_key_password: Option<Passphrase>,
+    private_key_password: Option<String>,
     client_cert_path: Option<String>,
     client_cert_blob: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for EapOptionsBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EapOptionsBuilder")
+            .field("identity", &self.identity)
+            .field("password", &redact_option(&self.password))
+            .field("anonymous_identity", &self.anonymous_identity)
+            .field("domain_suffix_match", &self.domain_suffix_match)
+            .field("ca_cert_path", &self.ca_cert_path)
+            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("system_ca_certs", &self.system_ca_certs)
+            .field("method", &self.method)
+            .field("phase2", &self.phase2)
+            .field("private_key_path", &self.private_key_path)
+            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field(
+                "private_key_password",
+                &redact_option(&self.private_key_password),
+            )
+            .field("client_cert_path", &self.client_cert_path)
+            .field("client_cert_blob", &self.client_cert_blob)
+            .finish()
+    }
 }
 
 impl EapOptionsBuilder {
@@ -523,7 +574,7 @@ impl EapOptionsBuilder {
     ///
     /// This is a required field.
     #[must_use]
-    pub fn password(mut self, password: impl Into<Passphrase>) -> Self {
+    pub fn password(mut self, password: impl Into<String>) -> Self {
         self.password = Some(password.into());
         self
     }
@@ -711,10 +762,10 @@ impl EapOptionsBuilder {
     /// use nmrs::EapOptions;
     ///
     /// let builder = EapOptions::builder()
-    ///     .private_key_password("password".to_string());
+    ///     .private_key_password("password");
     /// ```
     #[must_use]
-    pub fn private_key_password(mut self, password: impl Into<Passphrase>) -> Self {
+    pub fn private_key_password(mut self, password: impl Into<String>) -> Self {
         self.private_key_password = Some(password.into());
         self
     }
@@ -769,11 +820,11 @@ impl EapOptionsBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+    /// use nmrs::{EapOptions, EapMethod, Phase2};
     ///
     /// let opts = EapOptions::builder()
     ///     .identity("user@example.com")
-    ///     .password(Passphrase::new("password".to_string()))
+    ///     .password("password")
     ///     .method(EapMethod::Peap)
     ///     .phase2(Phase2::Mschapv2)
     ///     .build()
@@ -831,7 +882,7 @@ impl EapOptionsBuilder {
                     )
                 })?
             } else {
-                Passphrase::default()
+                String::new()
             },
             anonymous_identity: self.anonymous_identity,
             domain_suffix_match: self.domain_suffix_match,
@@ -882,13 +933,13 @@ impl EapOptionsBuilder {
 /// ## Password-Protected Network
 ///
 /// ```no_run
-/// use nmrs::{NetworkManager, Passphrase, WifiSecurity};
+/// use nmrs::{NetworkManager, WifiSecurity};
 ///
 /// # async fn example() -> nmrs::Result<()> {
 /// let nm = NetworkManager::new().await?;
 ///
 /// nm.connect("HomeWiFi", None, WifiSecurity::WpaPsk {
-///     psk: Passphrase::new("my_secure_password".to_string())
+///     psk: "my_secure_password".into()
 /// }).await?;
 /// # Ok(())
 /// # }
@@ -897,12 +948,12 @@ impl EapOptionsBuilder {
 /// ## Enterprise Network (WPA-EAP)
 ///
 /// ```no_run
-/// use nmrs::{NetworkManager, WifiSecurity, EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{NetworkManager, WifiSecurity, EapOptions, EapMethod, Phase2};
 ///
 /// # async fn example() -> nmrs::Result<()> {
 /// let nm = NetworkManager::new().await?;
 ///
-/// let eap_opts = EapOptions::new("user@company.com", Passphrase::new("password".to_string()))
+/// let eap_opts = EapOptions::new("user@company.com", "password")
 ///     .with_domain_suffix_match("company.com")
 ///     .with_system_ca_certs(true)
 ///     .with_method(EapMethod::Peap)
@@ -915,14 +966,14 @@ impl EapOptionsBuilder {
 /// # }
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum WifiSecurity {
     /// Open network (no authentication)
     Open,
     /// WPA-PSK (password-based authentication)
     WpaPsk {
         /// Pre-shared key (password)
-        psk: Passphrase,
+        psk: String,
     },
     /// WPA-EAP (Enterprise authentication via 802.1X)
     WpaEap {
@@ -935,6 +986,26 @@ pub enum WifiSecurity {
         /// EAP configuration options
         opts: EapOptions,
     },
+}
+
+impl fmt::Debug for WifiSecurity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Open => formatter.write_str("Open"),
+            Self::WpaPsk { .. } => formatter
+                .debug_struct("WpaPsk")
+                .field("psk", &Redacted)
+                .finish(),
+            Self::WpaEap { opts } => formatter
+                .debug_struct("WpaEap")
+                .field("opts", opts)
+                .finish(),
+            Self::Wpa3Eap192bit { opts } => formatter
+                .debug_struct("Wpa3Eap192bit")
+                .field("opts", opts)
+                .finish(),
+        }
+    }
 }
 
 impl WifiSecurity {

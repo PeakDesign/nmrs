@@ -4,15 +4,11 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- `Passphrase` keeps Wi-Fi, OpenVPN, and WireGuard secrets redacted from debug
-  output and zeroizes their owned buffers when dropped. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
-
 ### Changed
 
-- **Breaking:** Wi-Fi, OpenVPN, and WireGuard secret fields now use
-  `Passphrase` instead of `String`. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
+- Credential-bearing Wi-Fi, EAP, OpenVPN, and WireGuard types now redact
+  passwords and private keys from debug output, and connection tracing no
+  longer logs raw settings, without changing public field types. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
 
 ### Fixed
 

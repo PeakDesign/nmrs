@@ -27,7 +27,7 @@
 //! ).with_persistent_keepalive(25);
 //!
 //! let settings = WireGuardBuilder::new("MyVPN")
-//!     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=".to_string())
+//!     .private_key("YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=")
 //!     .address("10.0.0.2/24")
 //!     .add_peer(peer)
 //!     .dns(vec!["1.1.1.1".into()])
@@ -53,7 +53,7 @@
 //!     VpnKind::WireGuard,
 //!     "MyVPN",
 //!     "vpn.example.com:51820",
-//!     "YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=".to_string(),
+//!     "YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=",
 //!     "10.0.0.2/24",
 //!     vec![peer],
 //! ).with_dns(vec!["1.1.1.1".into()]);
@@ -71,7 +71,7 @@ use zvariant::{Dict, Value, signature};
 use super::wireguard_builder::WireGuardBuilder;
 use crate::api::models::{
     ConnectionError, ConnectionOptions, OpenVpnAuthType, OpenVpnCompression, OpenVpnConfig,
-    OpenVpnProxy, Passphrase, VpnCredentials,
+    OpenVpnProxy, VpnCredentials,
 };
 
 /// Builds WireGuard VPN connection settings.
@@ -94,7 +94,7 @@ pub fn build_wireguard_connection(
     opts: &ConnectionOptions,
 ) -> Result<HashMap<&'static str, HashMap<&'static str, Value<'static>>>, ConnectionError> {
     let mut builder = WireGuardBuilder::new(&creds.name)
-        .private_key(creds.private_key.clone())
+        .private_key(&creds.private_key)
         .address(&creds.address)
         .add_peers(creds.peers.iter().cloned())
         .options(opts);
@@ -138,16 +138,6 @@ fn string_pairs_to_dict(
 fn push_opt_str(out: &mut Vec<(String, String)>, key: &str, value: Option<&String>) {
     if let Some(v) = value {
         out.push((key.to_string(), v.clone()));
-    }
-}
-
-/// Pushes a plaintext copy of a secret onto `out` if `value` is `Some`.
-///
-/// NetworkManager's VPN settings dictionary owns its strings, so the copy
-/// cannot retain the zeroization behavior of [`Passphrase`].
-fn push_opt_secret(out: &mut Vec<(String, String)>, key: &str, value: Option<&Passphrase>) {
-    if let Some(value) = value {
-        out.push((key.to_string(), value.expose_secret().to_owned()));
     }
 }
 
@@ -311,7 +301,7 @@ pub fn build_openvpn_connection(
                     vpn_data.push(("http-proxy-username".into(), u.clone()));
                 }
                 if let Some(p) = password {
-                    vpn_data.push(("http-proxy-password".into(), p.expose_secret().to_owned()));
+                    vpn_data.push(("http-proxy-password".into(), p.clone()));
                 }
             }
             OpenVpnProxy::Socks {
@@ -338,8 +328,8 @@ pub fn build_openvpn_connection(
     let data_dict = string_pairs_to_dict(vpn_data)?;
 
     let mut vpn_secrets: Vec<(String, String)> = Vec::new();
-    push_opt_secret(&mut vpn_secrets, "password", config.password.as_ref());
-    push_opt_secret(&mut vpn_secrets, "cert-pass", config.key_password.as_ref());
+    push_opt_str(&mut vpn_secrets, "password", config.password.as_ref());
+    push_opt_str(&mut vpn_secrets, "cert-pass", config.key_password.as_ref());
 
     let mut vpn: HashMap<&'static str, Value<'static>> = HashMap::new();
     vpn.insert(
@@ -390,12 +380,11 @@ pub fn build_openvpn_connection(
 
     Ok(settings)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        OpenVpnCompression, OpenVpnConfig, OpenVpnProxy, Passphrase, VpnKind, WireGuardPeer,
+    use crate::api::models::{
+        OpenVpnCompression, OpenVpnConfig, OpenVpnProxy, VpnKind, WireGuardPeer,
     };
 
     fn create_test_credentials() -> VpnCredentials {
@@ -410,7 +399,7 @@ mod tests {
             VpnKind::WireGuard,
             "TestVPN",
             "vpn.example.com:51820",
-            "YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=".to_string(),
+            "YBk6X3pP8KjKz7+HFWzVHNqL3qTZq8hX9VxFQJ4zVmM=",
             "10.0.0.2/24",
             vec![peer],
         )
@@ -532,7 +521,7 @@ mod tests {
             "peer2.example.com:51821",
             vec!["192.168.0.0/16".into()],
         )
-        .with_preshared_key("PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=".to_string());
+        .with_preshared_key("PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=");
 
         creds.peers.push(extra_peer);
         let opts = create_test_options();
@@ -726,9 +715,7 @@ mod tests {
     #[test]
     fn peer_with_preshared_key() {
         let mut creds = create_test_credentials();
-        creds.peers[0].preshared_key = Some(Passphrase::new(
-            "PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=".to_string(),
-        ));
+        creds.peers[0].preshared_key = Some("PSKABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm=".into());
         let opts = create_test_options();
 
         let settings = build_wireguard_connection(&creds, &opts).unwrap();
@@ -1133,7 +1120,7 @@ mod tests {
         let config = create_openvpn_config()
             .with_auth_type(OpenVpnAuthType::Password)
             .with_username("user")
-            .with_password(Passphrase::new("secret".to_string()));
+            .with_password("secret");
         let opts = create_test_options();
         let settings = build_openvpn_connection(&config, &opts).unwrap();
         let vpn = settings.get("vpn").unwrap();

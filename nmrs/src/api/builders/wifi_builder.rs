@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use zvariant::Value;
 
 use super::connection_builder::ConnectionBuilder;
-use crate::Passphrase;
 use crate::api::models::{self, ConnectionOptions, EapMethod};
 
 /// WiFi band selection.
@@ -70,11 +69,10 @@ impl WifiMode {
 /// ## WPA-PSK (Personal)
 ///
 /// ```rust
-/// use nmrs::Passphrase;
 /// use nmrs::builders::WifiConnectionBuilder;
 ///
 /// let settings = WifiConnectionBuilder::new("HomeNetwork")
-///     .wpa_psk(Passphrase::new("my_secure_password".to_string()))
+///     .wpa_psk("my_secure_password")
 ///     .autoconnect(true)
 ///     .autoconnect_priority(10)
 ///     .build();
@@ -84,9 +82,9 @@ impl WifiMode {
 ///
 /// ```rust
 /// use nmrs::builders::WifiConnectionBuilder;
-/// use nmrs::{EapOptions, EapMethod, Passphrase, Phase2};
+/// use nmrs::{EapOptions, EapMethod, Phase2};
 ///
-/// let eap_opts = EapOptions::new("user@company.com", Passphrase::new("password".to_string()))
+/// let eap_opts = EapOptions::new("user@company.com", "password")
 ///     .with_domain_suffix_match("company.com")
 ///     .with_system_ca_certs(true)
 ///     .with_method(EapMethod::Peap)
@@ -101,12 +99,11 @@ impl WifiMode {
 /// ## Access Point (Hotspot)
 ///
 /// ```rust
-/// use nmrs::Passphrase;
 /// use nmrs::builders::{WifiConnectionBuilder, WifiMode};
 ///
 /// let settings = WifiConnectionBuilder::new("MyHotspot")
 ///     .mode(WifiMode::Ap)
-///     .wpa_psk(Passphrase::new("hotspot_password".to_string()))
+///     .wpa_psk("hotspot_password")
 ///     .ipv4_shared()
 ///     .ipv6_ignore()
 ///     .build();
@@ -161,11 +158,10 @@ impl WifiConnectionBuilder {
     /// and cipher (TKIP/CCMP) with the access point, supporting mixed-mode
     /// routers that advertise both WPA and WPA2.
     #[must_use]
-    pub fn wpa_psk(mut self, psk: impl Into<Passphrase>) -> Self {
-        let psk = psk.into();
+    pub fn wpa_psk(mut self, psk: impl Into<String>) -> Self {
         let mut security = HashMap::new();
         security.insert("key-mgmt", Value::from("wpa-psk"));
-        security.insert("psk", Value::from(psk.expose_secret().to_owned()));
+        security.insert("psk", Value::from(psk.into()));
         security.insert("psk-flags", Value::from(0u32));
         security.insert("auth-alg", Value::from("open"));
 
@@ -216,10 +212,7 @@ impl WifiConnectionBuilder {
 
         match opts.method {
             EapMethod::Peap | EapMethod::Ttls => {
-                e1x.insert(
-                    "password",
-                    Value::from(opts.password.expose_secret().to_owned()),
-                );
+                e1x.insert("password", Value::from(opts.password));
 
                 if let Some(ai) = opts.anonymous_identity {
                     e1x.insert("anonymous-identity", Value::from(ai));
@@ -239,10 +232,7 @@ impl WifiConnectionBuilder {
                 }
 
                 if let Some(password) = opts.private_key_password {
-                    e1x.insert(
-                        "private-key-password",
-                        Value::from(password.expose_secret().to_owned()),
-                    );
+                    e1x.insert("private-key-password", Value::from(password));
                 }
 
                 if let Some(cert) =
@@ -298,12 +288,11 @@ impl WifiConnectionBuilder {
     /// # Example: Access Point
     ///
     /// ```rust
-    /// use nmrs::Passphrase;
     /// use nmrs::builders::{WifiConnectionBuilder, WifiMode};
     ///
     /// let settings = WifiConnectionBuilder::new("MyHotspot")
     ///     .mode(WifiMode::Ap)
-    ///     .wpa_psk(Passphrase::new("hotspot_password".to_string()))
+    ///     .wpa_psk("hotspot_password")
     ///     .ipv4_shared()
     ///     .ipv6_ignore()
     ///     .build();
@@ -480,7 +469,7 @@ mod tests {
     #[test]
     fn open_overrides_previously_configured_security() {
         let settings = WifiConnectionBuilder::new("OpenNetwork")
-            .wpa_psk(Passphrase::new("password123".to_string()))
+            .wpa_psk("password123")
             .open()
             .build();
 
@@ -495,7 +484,7 @@ mod tests {
     #[test]
     fn builds_wpa_psk_wifi() {
         let settings = WifiConnectionBuilder::new("SecureNet")
-            .wpa_psk(Passphrase::new("password123".to_string()))
+            .wpa_psk("password123")
             .ipv4_auto()
             .ipv6_auto()
             .build();
@@ -526,7 +515,7 @@ mod tests {
     fn builds_wpa_eap_wifi() {
         let eap_opts = EapOptions {
             identity: "user@example.com".into(),
-            password: Passphrase::new("secret".to_string()),
+            password: "secret".into(),
             anonymous_identity: Some("anon@example.com".into()),
             domain_suffix_match: Some("example.com".into()),
             ca_cert_path: None,
@@ -616,7 +605,7 @@ mod tests {
     fn builds_ap_mode_hotspot() {
         let settings = WifiConnectionBuilder::new("MyHotspot")
             .mode(WifiMode::Ap)
-            .wpa_psk(Passphrase::new("hotspot_pass".to_string()))
+            .wpa_psk("hotspot_pass")
             .ipv4_shared()
             .ipv6_ignore()
             .build();

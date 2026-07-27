@@ -33,4 +33,3 @@ nmrs = { path = "nmrs", version = "3.0" }
 async-trait = "0.1.89"
 bitflags = "2.13.0"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time", "process"] }
-zeroize = { version = "1.9.0", features = ["aarch64", "derive", "std"] }

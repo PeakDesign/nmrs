@@ -31,9 +31,7 @@ async fn main() -> nmrs::Result<()> {
         "MyNetwork",
         None,
         WifiSecurity::WpaPsk {
-            psk: std::env::var("WIFI_PASSWORD")
-                .unwrap_or_else(|_| "password".to_string())
-                .into(),
+            psk: std::env::var("WIFI_PASSWORD").unwrap_or_else(|_| "password".to_string()),
         },
     )
     .await?;
