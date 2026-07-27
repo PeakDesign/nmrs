@@ -10,10 +10,14 @@ All notable changes to the `nmrs` crate will be documented in this file.
   passwords and private keys from debug output, and connection tracing no
   longer logs raw settings, without changing public field types. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
 - Non-palindromic IPv4 DNS server addresses are no longer rejected by the
-  OpenVPN and WireGuard builders. ([#509](https://github.com/freedesktop-rs/nmrs/pull/519))
+  OpenVPN and WireGuard builders. ([#519](https://github.com/freedesktop-rs/nmrs/pull/519))
 
 ### Fixed
 
+- Classify an active VPN as `ActiveConnection::Vpn` even when NetworkManager
+  parents it on the physical device it tunnels over, so OpenVPN-style tunnels
+  over Ethernet are no longer reported as
+  `ActiveConnection::Wired`. ([#520](https://github.com/freedesktop-rs/nmrs/pull/520))
 - Resolve Bluetooth devices through the BlueZ adapter that owns their address
   instead of assuming the adapter is `hci0`. ([#501](https://github.com/freedesktop-rs/nmrs/pull/501))
 

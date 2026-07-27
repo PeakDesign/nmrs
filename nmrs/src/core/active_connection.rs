@@ -367,10 +367,16 @@ fn active_connection_kind(
     raw_device_type: Option<u32>,
     connection_type: Option<&str>,
 ) -> ActiveConnectionKind {
+    // NetworkManager parents a VPN's active connection on the device it tunnels
+    // over, so an OpenVPN tunnel over Ethernet reports device type ETHERNET. The
+    // connection type has to be checked first or such a VPN classifies as Wired.
+    if matches!(connection_type, Some("vpn" | "wireguard")) {
+        return ActiveConnectionKind::Vpn;
+    }
+
     match raw_device_type {
         Some(raw_type) if device_type_registry::is_wired(raw_type) => ActiveConnectionKind::Wired,
         Some(device_type::WIFI) => ActiveConnectionKind::Wifi,
-        _ if matches!(connection_type, Some("vpn" | "wireguard")) => ActiveConnectionKind::Vpn,
         _ => ActiveConnectionKind::Other,
     }
 }
@@ -381,9 +387,25 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn classifies_by_device_type_first() {
+    fn classifies_vpn_carried_over_a_physical_device_as_vpn() {
         assert_eq!(
             active_connection_kind(Some(device_type::ETHERNET), Some("vpn")),
+            ActiveConnectionKind::Vpn
+        );
+        assert_eq!(
+            active_connection_kind(Some(device_type::WIFI), Some("vpn")),
+            ActiveConnectionKind::Vpn
+        );
+        assert_eq!(
+            active_connection_kind(Some(device_type::ETHERNET), Some("wireguard")),
+            ActiveConnectionKind::Vpn
+        );
+    }
+
+    #[test]
+    fn classifies_non_vpn_connections_by_device_type() {
+        assert_eq!(
+            active_connection_kind(Some(device_type::ETHERNET), Some("802-3-ethernet")),
             ActiveConnectionKind::Wired
         );
         assert_eq!(
@@ -391,7 +413,7 @@ mod tests {
             ActiveConnectionKind::Wired
         );
         assert_eq!(
-            active_connection_kind(Some(device_type::WIFI), Some("vpn")),
+            active_connection_kind(Some(device_type::WIFI), Some("802-11-wireless")),
             ActiveConnectionKind::Wifi
         );
     }
