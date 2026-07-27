@@ -297,10 +297,18 @@ impl ConnectionBuilder {
 
     /// Sets IPv4 DNS servers.
     ///
-    /// DNS servers are specified as integers (network byte order).
+    /// NetworkManager's legacy `ipv4.dns` property is an array of `in_addr_t`,
+    /// i.e. each `u32`'s in-memory bytes are the address octets in order
+    /// (network byte order). `u32::from(Ipv4Addr)` yields the *host*-order
+    /// integer instead, which NetworkManager reads back with the octets
+    /// reversed on little-endian machines, so build the integer from the raw
+    /// octets in native byte order.
     #[must_use]
     pub fn ipv4_dns(mut self, servers: Vec<Ipv4Addr>) -> Self {
-        let dns_u32: Vec<u32> = servers.into_iter().map(u32::from).collect();
+        let dns_u32: Vec<u32> = servers
+            .into_iter()
+            .map(|server| u32::from_ne_bytes(server.octets()))
+            .collect();
 
         if let Some(ipv4) = self.settings.get_mut("ipv4") {
             ipv4.insert("dns", Value::from(dns_u32));
@@ -672,9 +680,27 @@ mod tests {
         assert_eq!(shared["ipv4"].get("method"), Some(&Value::from("shared")));
     }
 
+    /// Decodes NetworkManager's `ipv4.dns` payload back into addresses.
+    ///
+    /// Each entry is an `in_addr_t`, so the address octets are the `u32`'s
+    /// in-memory bytes. Deliberately expressed as the inverse of the contract
+    /// rather than by reusing the builder's own conversion.
+    fn decode_ipv4_dns(value: &Value<'_>) -> Vec<Ipv4Addr> {
+        <Vec<u32>>::try_from(value.try_clone().unwrap())
+            .unwrap()
+            .into_iter()
+            .map(|raw| Ipv4Addr::from(raw.to_ne_bytes()))
+            .collect()
+    }
+
     #[test]
     fn configures_ipv4_dns() {
-        let dns: Vec<Ipv4Addr> = vec!["8.8.8.8".parse().unwrap(), "1.1.1.1".parse().unwrap()];
+        // Non-palindromic on purpose: `1.1.1.1`-style addresses are byte-order
+        // agnostic and hid the octet reversal in pop-os/cosmic-settings #2108.
+        let dns: Vec<Ipv4Addr> = vec![
+            "10.2.0.1".parse().unwrap(),
+            "192.168.10.53".parse().unwrap(),
+        ];
         let settings = ConnectionBuilder::new("802-3-ethernet", "eth0")
             .ipv4_auto()
             .ipv4_dns(dns.clone())
@@ -683,10 +709,24 @@ mod tests {
         let ipv4 = settings.get("ipv4").unwrap();
         let value = ipv4.get("dns").unwrap();
         assert_eq!(value.value_signature().to_string(), "au");
-        assert_eq!(
-            value,
-            &Value::from(dns.into_iter().map(u32::from).collect::<Vec<_>>())
-        );
+        assert_eq!(decode_ipv4_dns(value), dns);
+    }
+
+    /// Regression test for pop-os/cosmic-settings #2108: `10.2.0.1` reached NetworkManager as
+    /// `1.0.2.10` because the builder sent the host-order integer.
+    #[test]
+    #[cfg(target_endian = "little")]
+    fn ipv4_dns_uses_network_byte_order() {
+        let settings = ConnectionBuilder::new("802-3-ethernet", "eth0")
+            .ipv4_auto()
+            .ipv4_dns(vec!["10.2.0.1".parse().unwrap()])
+            .build();
+
+        let raw = <Vec<u32>>::try_from(settings["ipv4"].get("dns").unwrap().try_clone().unwrap())
+            .unwrap();
+
+        assert_eq!(raw, vec![0x0100_020A]);
+        assert_ne!(raw, vec![u32::from(Ipv4Addr::new(10, 2, 0, 1))]);
     }
 
     #[test]
@@ -825,7 +865,7 @@ mod tests {
         let settings = ConnectionBuilder::new("802-3-ethernet", "eth0")
             .ipv4_manual(vec![IpConfig::new("192.168.1.100", 24)])
             .ipv4_gateway("192.168.1.1".parse().unwrap())
-            .ipv4_dns(vec!["8.8.8.8".parse().unwrap()])
+            .ipv4_dns(vec!["192.168.1.53".parse().unwrap()])
             .build();
 
         let ipv4 = settings.get("ipv4").unwrap();
@@ -836,8 +876,8 @@ mod tests {
         );
         assert_eq!(ipv4.get("gateway"), Some(&Value::from("192.168.1.1")));
         assert_eq!(
-            ipv4.get("dns"),
-            Some(&Value::from(vec![u32::from(Ipv4Addr::new(8, 8, 8, 8))]))
+            decode_ipv4_dns(ipv4.get("dns").unwrap()),
+            vec![Ipv4Addr::new(192, 168, 1, 53)]
         );
     }
 }
