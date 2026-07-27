@@ -9,6 +9,8 @@ All notable changes to the `nmrs` crate will be documented in this file.
 - Credential-bearing Wi-Fi, EAP, OpenVPN, and WireGuard types now redact
   passwords and private keys from debug output, and connection tracing no
   longer logs raw settings, without changing public field types. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
+- Non-palindromic IPv4 DNS server addresses are no longer rejected by the
+  OpenVPN and WireGuard builders. ([#509](https://github.com/freedesktop-rs/nmrs/pull/519))
 
 ### Fixed
 
@@ -16,6 +18,7 @@ All notable changes to the `nmrs` crate will be documented in this file.
   instead of assuming the adapter is `hci0`. ([#501](https://github.com/freedesktop-rs/nmrs/pull/501))
 
 ## [3.4.1] - 2026-07-19
+
 ### Added
 
 - Isolated NetworkManager integration contracts now cover saved-profile events,
@@ -57,7 +60,9 @@ All notable changes to the `nmrs` crate will be documented in this file.
   decoding, error reporting, and temporary-file cleanup. ([#505](https://github.com/freedesktop-rs/nmrs/pull/505))
 
 ## [3.4.0] - 2026-07-08
-### Added 
+
+### Added
+
 - Expose existing secrets on SecretRequest for re-auth prefill ([#460](https://github.com/freedesktop-rs/nmrs/pull/460))
 - `MonitorHandle` returned by `monitor_network_changes` and `monitor_device_changes` for graceful shutdown ([#461](https://github.com/freedesktop-rs/nmrs/pull/461))
 - `NetworkManager::dbus_connection()` and `nmrs::raw` (`zbus` / `zvariant` re-exports) for advanced builder workflows ([#462](https://github.com/freedesktop-rs/nmrs/pull/464))
@@ -65,13 +70,16 @@ All notable changes to the `nmrs` crate will be documented in this file.
 - mdbook docs for builder submission workflow, `add_connection()`, and `add_and_activate_connection()` ([#462](https://github.com/freedesktop-rs/nmrs/pull/464))
 
 ### Fixed
+
 - `monitor_network_changes` now detects hotplugged Wi-Fi devices instead of only monitoring devices present at startup ([#461](https://github.com/freedesktop-rs/nmrs/pull/461))
 - Monitors return `Ok(())` on clean shutdown instead of always returning `Err(Stuck(...))` ([#461](https://github.com/freedesktop-rs/nmrs/pull/461))
 
 ### Changed
+
 - **Breaking:** `monitor_network_changes` and `monitor_device_changes` now return `Result<MonitorHandle>` instead of `Result<()>` ([#461](https://github.com/freedesktop-rs/nmrs/pull/461))
 
 ## [3.3.0] - 2026-06-30
+
 ### Added
 
 - `Device::speed_mbps` and `NetworkManager::list_wired_device_details()` expose
