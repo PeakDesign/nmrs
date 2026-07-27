@@ -602,19 +602,22 @@ mod tests {
 
     #[test]
     fn adds_dns_servers() {
+        // Non-palindromic IPv4 on purpose: see #2108 on pop-os/cosmic-settings.
         let settings = WireGuardBuilder::new("TestVPN")
             .private_key(PRIVATE_KEY)
             .address("10.0.0.2/24")
             .add_peer(create_test_peer())
-            .dns(vec!["1.1.1.1".into(), "2001:4860:4860::8888".into()])
+            .dns(vec!["10.2.0.1".into(), "2001:4860:4860::8888".into()])
             .build()
             .expect("valid mixed-family DNS settings");
 
         let ipv4 = settings.get("ipv4").unwrap();
-        assert_eq!(
-            ipv4.get("dns"),
-            Some(&Value::from(vec![u32::from(Ipv4Addr::new(1, 1, 1, 1))]))
-        );
+        let raw_v4 = <Vec<u32>>::try_from(ipv4.get("dns").unwrap().try_clone().unwrap()).unwrap();
+        let decoded_v4: Vec<Ipv4Addr> = raw_v4
+            .into_iter()
+            .map(|raw| Ipv4Addr::from(raw.to_ne_bytes()))
+            .collect();
+        assert_eq!(decoded_v4, vec![Ipv4Addr::new(10, 2, 0, 1)]);
         assert_eq!(ipv4["dns"].value_signature().to_string(), "au");
 
         let ipv6 = settings.get("ipv6").unwrap();

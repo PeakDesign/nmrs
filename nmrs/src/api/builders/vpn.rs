@@ -403,7 +403,8 @@ mod tests {
             "10.0.0.2/24",
             vec![peer],
         )
-        .with_dns(vec!["1.1.1.1".into(), "8.8.8.8".into()])
+        // Non-palindromic on purpose: see #2108 on pop-os/cosmic-settings.
+        .with_dns(vec!["10.2.0.1".into(), "192.168.10.53".into()])
         .with_mtu(1420)
     }
 
@@ -636,12 +637,21 @@ mod tests {
         let settings = build_wireguard_connection(&creds, &opts).unwrap();
         let ipv4 = settings.get("ipv4").unwrap();
 
+        // NetworkManager reads each entry as an `in_addr_t`, so decode the
+        // native bytes back into an address rather than reusing the builder's
+        // own conversion.
+        let decoded: Vec<std::net::Ipv4Addr> =
+            <Vec<u32>>::try_from(ipv4.get("dns").unwrap().try_clone().unwrap())
+                .unwrap()
+                .into_iter()
+                .map(|raw| std::net::Ipv4Addr::from(raw.to_ne_bytes()))
+                .collect();
         assert_eq!(
-            ipv4.get("dns"),
-            Some(&Value::from(vec![
-                u32::from(std::net::Ipv4Addr::new(1, 1, 1, 1)),
-                u32::from(std::net::Ipv4Addr::new(8, 8, 8, 8)),
-            ]))
+            decoded,
+            vec![
+                std::net::Ipv4Addr::new(10, 2, 0, 1),
+                std::net::Ipv4Addr::new(192, 168, 10, 53),
+            ]
         );
         assert_eq!(ipv4["dns"].value_signature().to_string(), "au");
     }
