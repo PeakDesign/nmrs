@@ -1,8 +1,10 @@
 #![allow(deprecated)]
 
+use super::redact_option;
 use super::vpn::{VpnConfig, VpnKind};
 use crate::api::models::error::ConnectionError;
 use std::convert::TryFrom;
+use std::fmt;
 use std::net::Ipv4Addr;
 use uuid::Uuid;
 
@@ -82,7 +84,7 @@ pub enum OpenVpnAuthType {
 ///     .with_dns(vec!["1.1.1.1".into()]);
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OpenVpnConfig {
     /// Connection name.
     pub name: String,
@@ -163,6 +165,52 @@ pub struct OpenVpnConfig {
     pub data_ciphers_fallback: Option<String>,
     /// When true, disables NCP (`ncp-disable`).
     pub ncp_disable: bool,
+}
+
+impl fmt::Debug for OpenVpnConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OpenVpnConfig")
+            .field("name", &self.name)
+            .field("remote", &self.remote)
+            .field("port", &self.port)
+            .field("tcp", &self.tcp)
+            .field("auth_type", &self.auth_type)
+            .field("auth", &self.auth)
+            .field("cipher", &self.cipher)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("uuid", &self.uuid)
+            .field("ca_cert", &self.ca_cert)
+            .field("client_cert", &self.client_cert)
+            .field("client_key", &self.client_key)
+            .field("key_password", &redact_option(&self.key_password))
+            .field("username", &self.username)
+            .field("password", &redact_option(&self.password))
+            .field("compression", &self.compression)
+            .field("proxy", &self.proxy)
+            .field("tls_auth_key", &self.tls_auth_key)
+            .field("tls_auth_direction", &self.tls_auth_direction)
+            .field("tls_crypt", &self.tls_crypt)
+            .field("tls_crypt_v2", &self.tls_crypt_v2)
+            .field("tls_version_min", &self.tls_version_min)
+            .field("tls_version_max", &self.tls_version_max)
+            .field("tls_cipher", &self.tls_cipher)
+            .field("remote_cert_tls", &self.remote_cert_tls)
+            .field("verify_x509_name", &self.verify_x509_name)
+            .field("crl_verify", &self.crl_verify)
+            .field("redirect_gateway", &self.redirect_gateway)
+            .field("routes", &self.routes)
+            .field("ping", &self.ping)
+            .field("ping_exit", &self.ping_exit)
+            .field("ping_restart", &self.ping_restart)
+            .field("reneg_seconds", &self.reneg_seconds)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("data_ciphers", &self.data_ciphers)
+            .field("data_ciphers_fallback", &self.data_ciphers_fallback)
+            .field("ncp_disable", &self.ncp_disable)
+            .finish()
+    }
 }
 
 impl OpenVpnConfig {
@@ -701,7 +749,7 @@ pub enum OpenVpnCompression {
 /// Maps to the NM `proxy-type`, `proxy-server`, `proxy-port`,
 /// `proxy-retry`, `http-proxy-username`, and `http-proxy-password` keys.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum OpenVpnProxy {
     /// HTTP proxy.
     Http {
@@ -717,6 +765,37 @@ pub enum OpenVpnProxy {
         port: u16,
         retry: bool,
     },
+}
+
+impl fmt::Debug for OpenVpnProxy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http {
+                server,
+                port,
+                username,
+                password,
+                retry,
+            } => formatter
+                .debug_struct("Http")
+                .field("server", server)
+                .field("port", port)
+                .field("username", username)
+                .field("password", &redact_option(password))
+                .field("retry", retry)
+                .finish(),
+            Self::Socks {
+                server,
+                port,
+                retry,
+            } => formatter
+                .debug_struct("Socks")
+                .field("server", server)
+                .field("port", port)
+                .field("retry", retry)
+                .finish(),
+        }
+    }
 }
 
 #[cfg(test)]

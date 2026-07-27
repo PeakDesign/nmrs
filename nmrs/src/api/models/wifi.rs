@@ -1,8 +1,11 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use super::access_point::{AccessPoint, SecurityFeatures};
 use super::error::ConnectionError;
 use super::saved_connection::SavedConnectionBrief;
+use super::{Redacted, redact_option};
 
 /// Visible Wi-Fi access points grouped by interface and SSID for applet UIs.
 ///
@@ -220,7 +223,7 @@ pub enum Phase2 {
 ///     .with_phase2(Phase2::Pap);
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EapOptions {
     /// User identity (usually email or username)
     pub identity: String,
@@ -250,6 +253,31 @@ pub struct EapOptions {
     pub client_cert_path: Option<String>,
     /// TLS: Client certificate encoded as DER or PKCS#12, mutually exclusive with `client_cert_path`
     pub client_cert_blob: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for EapOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EapOptions")
+            .field("identity", &self.identity)
+            .field("password", &Redacted)
+            .field("anonymous_identity", &self.anonymous_identity)
+            .field("domain_suffix_match", &self.domain_suffix_match)
+            .field("ca_cert_path", &self.ca_cert_path)
+            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("system_ca_certs", &self.system_ca_certs)
+            .field("method", &self.method)
+            .field("phase2", &self.phase2)
+            .field("private_key_path", &self.private_key_path)
+            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field(
+                "private_key_password",
+                &redact_option(&self.private_key_password),
+            )
+            .field("client_cert_path", &self.client_cert_path)
+            .field("client_cert_blob", &self.client_cert_blob)
+            .finish()
+    }
 }
 
 impl Default for EapOptions {
@@ -489,7 +517,7 @@ impl EapOptions {
 ///     .build()
 ///     .expect("all required fields set");
 /// ```
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct EapOptionsBuilder {
     identity: Option<String>,
     password: Option<String>,
@@ -505,6 +533,31 @@ pub struct EapOptionsBuilder {
     private_key_password: Option<String>,
     client_cert_path: Option<String>,
     client_cert_blob: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for EapOptionsBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EapOptionsBuilder")
+            .field("identity", &self.identity)
+            .field("password", &redact_option(&self.password))
+            .field("anonymous_identity", &self.anonymous_identity)
+            .field("domain_suffix_match", &self.domain_suffix_match)
+            .field("ca_cert_path", &self.ca_cert_path)
+            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("system_ca_certs", &self.system_ca_certs)
+            .field("method", &self.method)
+            .field("phase2", &self.phase2)
+            .field("private_key_path", &self.private_key_path)
+            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field(
+                "private_key_password",
+                &redact_option(&self.private_key_password),
+            )
+            .field("client_cert_path", &self.client_cert_path)
+            .field("client_cert_blob", &self.client_cert_blob)
+            .finish()
+    }
 }
 
 impl EapOptionsBuilder {
@@ -913,7 +966,7 @@ impl EapOptionsBuilder {
 /// # }
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum WifiSecurity {
     /// Open network (no authentication)
     Open,
@@ -933,6 +986,26 @@ pub enum WifiSecurity {
         /// EAP configuration options
         opts: EapOptions,
     },
+}
+
+impl fmt::Debug for WifiSecurity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Open => formatter.write_str("Open"),
+            Self::WpaPsk { .. } => formatter
+                .debug_struct("WpaPsk")
+                .field("psk", &Redacted)
+                .finish(),
+            Self::WpaEap { opts } => formatter
+                .debug_struct("WpaEap")
+                .field("opts", opts)
+                .finish(),
+            Self::Wpa3Eap192bit { opts } => formatter
+                .debug_struct("Wpa3Eap192bit")
+                .field("opts", opts)
+                .finish(),
+        }
+    }
 }
 
 impl WifiSecurity {

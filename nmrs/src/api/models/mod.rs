@@ -18,6 +18,20 @@ mod vpn;
 mod wifi;
 mod wireguard;
 
+use std::fmt;
+
+pub(crate) struct Redacted;
+
+impl fmt::Debug for Redacted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("[REDACTED]")
+    }
+}
+
+pub(crate) fn redact_option<T>(value: &Option<T>) -> Option<Redacted> {
+    value.as_ref().map(|_| Redacted)
+}
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

@@ -1,7 +1,10 @@
 #![allow(deprecated)]
 
+use std::fmt;
+
 use super::error::ConnectionError;
 use super::vpn::{VpnConfig, VpnKind};
+use super::{Redacted, redact_option};
 use uuid::Uuid;
 
 /// WireGuard configuration for establishing a VPN connection.
@@ -39,7 +42,7 @@ use uuid::Uuid;
 /// ).with_dns(vec!["1.1.1.1".into()]);
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WireGuardConfig {
     /// Unique name for the connection profile.
     pub name: String,
@@ -57,6 +60,22 @@ pub struct WireGuardConfig {
     pub mtu: Option<u32>,
     /// Optional UUID for the connection (auto-generated if not provided).
     pub uuid: Option<Uuid>,
+}
+
+impl fmt::Debug for WireGuardConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WireGuardConfig")
+            .field("name", &self.name)
+            .field("gateway", &self.gateway)
+            .field("private_key", &Redacted)
+            .field("address", &self.address)
+            .field("peers", &self.peers)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("uuid", &self.uuid)
+            .finish()
+    }
 }
 
 impl WireGuardConfig {
@@ -182,7 +201,7 @@ impl From<VpnCredentials> for WireGuardConfig {
 /// Prefer [`WireGuardConfig`] for new WireGuard connections.
 #[deprecated(note = "Use WireGuardConfig instead.")]
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VpnCredentials {
     /// The type of VPN (currently only WireGuard).
     pub vpn_type: VpnKind,
@@ -202,6 +221,23 @@ pub struct VpnCredentials {
     pub mtu: Option<u32>,
     /// Optional UUID for the connection (auto-generated if not provided).
     pub uuid: Option<Uuid>,
+}
+
+impl fmt::Debug for VpnCredentials {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VpnCredentials")
+            .field("vpn_type", &self.vpn_type)
+            .field("name", &self.name)
+            .field("gateway", &self.gateway)
+            .field("private_key", &Redacted)
+            .field("address", &self.address)
+            .field("peers", &self.peers)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("uuid", &self.uuid)
+            .finish()
+    }
 }
 
 impl VpnCredentials {
@@ -356,7 +392,7 @@ impl VpnConfig for VpnCredentials {
 ///     .expect("all required fields set");
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct VpnCredentialsBuilder {
     vpn_type: Option<VpnKind>,
     name: Option<String>,
@@ -367,6 +403,23 @@ pub struct VpnCredentialsBuilder {
     dns: Option<Vec<String>>,
     mtu: Option<u32>,
     uuid: Option<Uuid>,
+}
+
+impl fmt::Debug for VpnCredentialsBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VpnCredentialsBuilder")
+            .field("vpn_type", &self.vpn_type)
+            .field("name", &self.name)
+            .field("gateway", &self.gateway)
+            .field("private_key", &redact_option(&self.private_key))
+            .field("address", &self.address)
+            .field("peers", &self.peers)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("uuid", &self.uuid)
+            .finish()
+    }
 }
 
 impl VpnCredentialsBuilder {
@@ -571,7 +624,7 @@ impl VpnCredentialsBuilder {
 /// );
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WireGuardPeer {
     /// The peer's WireGuard public key (base64 encoded).
     pub public_key: String,
@@ -583,6 +636,19 @@ pub struct WireGuardPeer {
     pub preshared_key: Option<String>,
     /// Optional keepalive interval in seconds (e.g., 25).
     pub persistent_keepalive: Option<u32>,
+}
+
+impl fmt::Debug for WireGuardPeer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WireGuardPeer")
+            .field("public_key", &self.public_key)
+            .field("gateway", &self.gateway)
+            .field("allowed_ips", &self.allowed_ips)
+            .field("preshared_key", &redact_option(&self.preshared_key))
+            .field("persistent_keepalive", &self.persistent_keepalive)
+            .finish()
+    }
 }
 
 impl WireGuardPeer {

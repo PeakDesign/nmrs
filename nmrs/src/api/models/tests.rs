@@ -8,11 +8,27 @@ use super::config::*;
 use super::connection_state::*;
 use super::device::*;
 use super::error::*;
+use super::openvpn::*;
+use super::saved_connection::VpnSecretFlags;
 use super::state_reason::*;
 use super::vpn::*;
 use super::wifi::*;
 use super::wireguard::*;
 use crate::api::models::DeviceType;
+
+fn assert_debug_redacts<T: std::fmt::Debug>(value: &T, secrets: &[&str]) {
+    let output = format!("{value:?}");
+    assert!(
+        output.contains("[REDACTED]"),
+        "debug output did not mark redacted fields: {output}"
+    );
+    for secret in secrets {
+        assert!(
+            !output.contains(secret),
+            "debug output exposed secret {secret:?}: {output}"
+        );
+    }
+}
 
 #[test]
 fn device_type_code_round_trips_all_variants() {
@@ -1404,4 +1420,82 @@ fn test_device_state_from_u32_intermediate_states() {
     assert_eq!(DeviceState::from(80), DeviceState::IpCheck);
     assert_eq!(DeviceState::from(90), DeviceState::Secondaries);
     assert_eq!(DeviceState::from(110), DeviceState::Deactivating);
+}
+
+#[test]
+fn credential_models_redact_debug_output() {
+    let eap = EapOptions::new("user@example.com", "eap-password")
+        .with_private_key_password("eap-key-password");
+    assert_debug_redacts(&eap, &["eap-password", "eap-key-password"]);
+
+    let eap_builder = EapOptions::builder()
+        .identity("user@example.com")
+        .password("builder-password")
+        .private_key_password("builder-key-password");
+    assert_debug_redacts(&eap_builder, &["builder-password", "builder-key-password"]);
+
+    let wifi = WifiSecurity::WpaPsk {
+        psk: "wifi-password".into(),
+    };
+    assert_debug_redacts(&wifi, &["wifi-password"]);
+
+    let openvpn = OpenVpnConfig::new("vpn", "vpn.example.com", 1194, false)
+        .with_key_password("openvpn-key-password")
+        .with_password("openvpn-password")
+        .with_proxy(OpenVpnProxy::Http {
+            server: "proxy.example.com".into(),
+            port: 8080,
+            username: Some("proxy-user".into()),
+            password: Some("proxy-password".into()),
+            retry: true,
+        });
+    assert_debug_redacts(
+        &openvpn,
+        &["openvpn-key-password", "openvpn-password", "proxy-password"],
+    );
+
+    let peer = WireGuardPeer::new(
+        "public-key",
+        "vpn.example.com:51820",
+        vec!["0.0.0.0/0".into()],
+    )
+    .with_preshared_key("wireguard-preshared-key");
+    let wireguard = WireGuardConfig::new(
+        "vpn",
+        "vpn.example.com:51820",
+        "wireguard-private-key",
+        "10.0.0.2/24",
+        vec![peer],
+    );
+    assert_debug_redacts(
+        &wireguard,
+        &["wireguard-private-key", "wireguard-preshared-key"],
+    );
+
+    let legacy_credentials: VpnCredentials = wireguard.clone().into();
+    assert_debug_redacts(
+        &legacy_credentials,
+        &["wireguard-private-key", "wireguard-preshared-key"],
+    );
+
+    let credentials_builder = VpnCredentialsBuilder::default().private_key("builder-private-key");
+    assert_debug_redacts(&credentials_builder, &["builder-private-key"]);
+
+    let saved_wireguard = VpnType::WireGuard {
+        private_key: Some("saved-private-key".into()),
+        peer_public_key: Some("public-key".into()),
+        endpoint: Some("vpn.example.com:51820".into()),
+        allowed_ips: vec!["0.0.0.0/0".into()],
+        persistent_keepalive: Some(25),
+    };
+    assert_debug_redacts(&saved_wireguard, &["saved-private-key"]);
+
+    let vpn_type = VpnType::Generic {
+        service_type: "org.example.Vpn".into(),
+        data: std::collections::HashMap::from([("embedded-password".into(), "data-secret".into())]),
+        secrets: std::collections::HashMap::from([("password".into(), "vpn-secret".into())]),
+        user_name: Some("user".into()),
+        password_flags: VpnSecretFlags::default(),
+    };
+    assert_debug_redacts(&vpn_type, &["data-secret", "vpn-secret"]);
 }

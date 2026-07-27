@@ -4,6 +4,12 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Credential-bearing Wi-Fi, EAP, OpenVPN, and WireGuard types now redact
+  passwords and private keys from debug output, and connection tracing no
+  longer logs raw settings, without changing public field types. ([#508](https://github.com/freedesktop-rs/nmrs/pull/508))
+
 ### Fixed
 
 - Resolve Bluetooth devices through the BlueZ adapter that owns their address

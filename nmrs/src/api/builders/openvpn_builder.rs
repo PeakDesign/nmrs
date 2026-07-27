@@ -9,13 +9,13 @@
 //! struct. Use [`super::vpn::build_openvpn_connection`] to convert it into
 //! NetworkManager connection settings.
 
-use std::path::Path;
+use std::{fmt, path::Path};
 
 use uuid::Uuid;
 
 use crate::api::models::{
     ConnectionError, OpenVpnAuthType, OpenVpnCompression, OpenVpnConfig, OpenVpnProxy, VpnRoute,
-    vpn_route_from_parser,
+    redact_option, vpn_route_from_parser,
 };
 use crate::core::ovpn_parser::parser::{self, CertSource, OvpnFile};
 use crate::util::cert_store::store_inline_cert;
@@ -47,7 +47,6 @@ use crate::util::validation::validate_connection_name;
 ///     .expect("Failed to build OpenVPN config");
 /// ```
 #[non_exhaustive]
-#[derive(Debug)]
 pub struct OpenVpnBuilder {
     name: String,
     remote: Option<String>,
@@ -87,6 +86,52 @@ pub struct OpenVpnBuilder {
     data_ciphers: Option<String>,
     data_ciphers_fallback: Option<String>,
     ncp_disable: bool,
+}
+
+impl fmt::Debug for OpenVpnBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OpenVpnBuilder")
+            .field("name", &self.name)
+            .field("remote", &self.remote)
+            .field("port", &self.port)
+            .field("tcp", &self.tcp)
+            .field("auth_type", &self.auth_type)
+            .field("auth", &self.auth)
+            .field("cipher", &self.cipher)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("uuid", &self.uuid)
+            .field("ca_cert", &self.ca_cert)
+            .field("client_cert", &self.client_cert)
+            .field("client_key", &self.client_key)
+            .field("key_password", &redact_option(&self.key_password))
+            .field("username", &self.username)
+            .field("password", &redact_option(&self.password))
+            .field("compression", &self.compression)
+            .field("proxy", &self.proxy)
+            .field("tls_auth_key", &self.tls_auth_key)
+            .field("tls_auth_direction", &self.tls_auth_direction)
+            .field("tls_crypt", &self.tls_crypt)
+            .field("tls_crypt_v2", &self.tls_crypt_v2)
+            .field("tls_version_min", &self.tls_version_min)
+            .field("tls_version_max", &self.tls_version_max)
+            .field("tls_cipher", &self.tls_cipher)
+            .field("remote_cert_tls", &self.remote_cert_tls)
+            .field("verify_x509_name", &self.verify_x509_name)
+            .field("crl_verify", &self.crl_verify)
+            .field("redirect_gateway", &self.redirect_gateway)
+            .field("routes", &self.routes)
+            .field("ping", &self.ping)
+            .field("ping_exit", &self.ping_exit)
+            .field("ping_restart", &self.ping_restart)
+            .field("reneg_seconds", &self.reneg_seconds)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("data_ciphers", &self.data_ciphers)
+            .field("data_ciphers_fallback", &self.data_ciphers_fallback)
+            .field("ncp_disable", &self.ncp_disable)
+            .finish()
+    }
 }
 
 impl OpenVpnBuilder {
@@ -1185,5 +1230,29 @@ key /etc/openvpn/client.key
         assert_eq!(config.auth_type, Some(OpenVpnAuthType::Password));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn debug_output_redacts_passwords() {
+        let builder = OpenVpnBuilder::new("vpn")
+            .key_password("private-key-password")
+            .password("vpn-password")
+            .proxy(OpenVpnProxy::Http {
+                server: "proxy.example.com".into(),
+                port: 8080,
+                username: Some("proxy-user".into()),
+                password: Some("proxy-password".into()),
+                retry: true,
+            });
+
+        let output = format!("{builder:?}");
+
+        assert!(output.contains("[REDACTED]"));
+        for secret in ["private-key-password", "vpn-password", "proxy-password"] {
+            assert!(
+                !output.contains(secret),
+                "debug output exposed secret {secret:?}: {output}"
+            );
+        }
     }
 }

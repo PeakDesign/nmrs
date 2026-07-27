@@ -882,7 +882,10 @@ async fn build_and_activate_new(
 
     let settings = build_wifi_connection(ssid, &creds, &opts);
 
-    trace!("Creating new connection, settings: \n{settings:#?}");
+    trace!(
+        "Creating new connection with {} settings sections",
+        settings.len()
+    );
 
     ensure_disconnected(conn, wifi_device, timeout_config).await?;
 

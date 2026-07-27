@@ -5,12 +5,13 @@
 //! connections. [`VpnKind`] distinguishes the two, while [`VpnType`] carries
 //! protocol-specific metadata decoded from NM settings.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use super::device::DeviceState;
 use super::openvpn::OpenVpnConfig;
 use super::saved_connection::VpnSecretFlags;
 use super::wireguard::WireGuardConfig;
+use super::{Redacted, redact_option};
 use uuid::Uuid;
 
 pub(crate) mod sealed {
@@ -75,7 +76,7 @@ impl OpenVpnConnectionType {
 /// Each variant carries the fields an applet typically needs to render a VPN
 /// list entry.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum VpnType {
     /// Kernel WireGuard tunnel.
     WireGuard {
@@ -166,6 +167,108 @@ pub enum VpnType {
         /// Password secret flags.
         password_flags: VpnSecretFlags,
     },
+}
+
+impl fmt::Debug for VpnType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WireGuard {
+                private_key,
+                peer_public_key,
+                endpoint,
+                allowed_ips,
+                persistent_keepalive,
+            } => formatter
+                .debug_struct("WireGuard")
+                .field("private_key", &redact_option(private_key))
+                .field("peer_public_key", peer_public_key)
+                .field("endpoint", endpoint)
+                .field("allowed_ips", allowed_ips)
+                .field("persistent_keepalive", persistent_keepalive)
+                .finish(),
+            Self::OpenVpn {
+                remote,
+                connection_type,
+                user_name,
+                ca,
+                cert,
+                key,
+                ta,
+                password_flags,
+            } => formatter
+                .debug_struct("OpenVpn")
+                .field("remote", remote)
+                .field("connection_type", connection_type)
+                .field("user_name", user_name)
+                .field("ca", ca)
+                .field("cert", cert)
+                .field("key", key)
+                .field("ta", ta)
+                .field("password_flags", password_flags)
+                .finish(),
+            Self::OpenConnect {
+                gateway,
+                user_name,
+                protocol,
+                password_flags,
+            } => formatter
+                .debug_struct("OpenConnect")
+                .field("gateway", gateway)
+                .field("user_name", user_name)
+                .field("protocol", protocol)
+                .field("password_flags", password_flags)
+                .finish(),
+            Self::StrongSwan {
+                address,
+                method,
+                user_name,
+                certificate,
+                password_flags,
+            } => formatter
+                .debug_struct("StrongSwan")
+                .field("address", address)
+                .field("method", method)
+                .field("user_name", user_name)
+                .field("certificate", certificate)
+                .field("password_flags", password_flags)
+                .finish(),
+            Self::Pptp {
+                gateway,
+                user_name,
+                password_flags,
+            } => formatter
+                .debug_struct("Pptp")
+                .field("gateway", gateway)
+                .field("user_name", user_name)
+                .field("password_flags", password_flags)
+                .finish(),
+            Self::L2tp {
+                gateway,
+                user_name,
+                password_flags,
+                ipsec_enabled,
+            } => formatter
+                .debug_struct("L2tp")
+                .field("gateway", gateway)
+                .field("user_name", user_name)
+                .field("password_flags", password_flags)
+                .field("ipsec_enabled", ipsec_enabled)
+                .finish(),
+            Self::Generic {
+                service_type,
+                user_name,
+                password_flags,
+                ..
+            } => formatter
+                .debug_struct("Generic")
+                .field("service_type", service_type)
+                .field("data", &Redacted)
+                .field("secrets", &Redacted)
+                .field("user_name", user_name)
+                .field("password_flags", password_flags)
+                .finish(),
+        }
+    }
 }
 
 /// VPN connection configuration
