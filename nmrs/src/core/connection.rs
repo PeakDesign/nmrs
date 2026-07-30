@@ -776,7 +776,7 @@ async fn connect_via_saved(
                         autoconnect_retries: None,
                     };
 
-                    let settings = build_wifi_connection(ssid, creds, &opts);
+                    let settings = build_wifi_connection(ssid, creds, &opts)?;
 
                     debug!("Creating fresh connection with corrected settings");
                     let (new_connection, new_active_conn) = nm
@@ -816,7 +816,7 @@ async fn connect_via_saved(
                 autoconnect_retries: None,
             };
 
-            let settings = build_wifi_connection(ssid, creds, &opts);
+            let settings = build_wifi_connection(ssid, creds, &opts)?;
 
             let (new_connection, active_conn) = nm
                 .add_and_activate_connection(settings, wifi_device.clone(), ap.clone())
@@ -880,7 +880,7 @@ async fn build_and_activate_new(
         autoconnect_priority: None,
     };
 
-    let settings = build_wifi_connection(ssid, &creds, &opts);
+    let settings = build_wifi_connection(ssid, &creds, &opts)?;
 
     trace!(
         "Creating new connection with {} settings sections",

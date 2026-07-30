@@ -33,7 +33,7 @@ use zvariant::Value;
 
 use super::connection_builder::ConnectionBuilder;
 use super::wifi_builder::WifiConnectionBuilder;
-use crate::api::models::{self, ConnectionOptions};
+use crate::api::models::{self, ConnectionError, ConnectionOptions};
 
 /// Builds a complete Wi-Fi connection settings dictionary.
 ///
@@ -57,12 +57,17 @@ use crate::api::models::{self, ConnectionOptions};
 ///
 /// This function is maintained for backward compatibility. For new code,
 /// consider using `WifiConnectionBuilder` for a more ergonomic API.
-#[must_use]
+///
+/// # Errors
+///
+/// Returns [`ConnectionError::InvalidInput`] when an EAP certificate or key
+/// is supplied as both a path and a blob.
+#[must_use = "handle invalid Wi-Fi EAP inputs before using the settings"]
 pub fn build_wifi_connection(
     ssid: &str,
     security: &models::WifiSecurity,
     opts: &ConnectionOptions,
-) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
+) -> Result<HashMap<&'static str, HashMap<&'static str, Value<'static>>>, ConnectionError> {
     let mut builder = WifiConnectionBuilder::new(ssid)
         .options(opts)
         .ipv4_auto()
@@ -71,11 +76,11 @@ pub fn build_wifi_connection(
     builder = match security {
         models::WifiSecurity::Open => builder.open(),
         models::WifiSecurity::WpaPsk { psk } => builder.wpa_psk(psk),
-        models::WifiSecurity::WpaEap { opts } => builder.wpa_eap(opts.clone()),
-        models::WifiSecurity::Wpa3Eap192bit { opts } => builder.wpa3_eap_192_bit(opts.clone()),
+        models::WifiSecurity::WpaEap { opts } => builder.wpa_eap(opts.clone())?,
+        models::WifiSecurity::Wpa3Eap192bit { opts } => builder.wpa3_eap_192_bit(opts.clone())?,
     };
 
-    builder.build()
+    Ok(builder.build())
 }
 
 /// Builds a complete Ethernet connection settings dictionary.
@@ -114,6 +119,14 @@ mod tests {
     use crate::models::{ConnectionOptions, EapMethod, EapOptions, Phase2, WifiSecurity};
     use zvariant::Value;
 
+    fn build_wifi_connection(
+        ssid: &str,
+        security: &WifiSecurity,
+        opts: &ConnectionOptions,
+    ) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
+        super::build_wifi_connection(ssid, security, opts).expect("valid Wi-Fi settings")
+    }
+
     fn default_opts() -> ConnectionOptions {
         ConnectionOptions {
             autoconnect: true,
@@ -139,6 +152,26 @@ mod tests {
         assert!(conn.contains_key("ipv6"));
         // Open networks should NOT have security section
         assert!(!conn.contains_key("802-11-wireless-security"));
+    }
+
+    #[test]
+    fn conflicting_eap_ca_cert_path_and_blob_returns_invalid_input() {
+        let mut opts = EapOptions::new("user@example.com", "secret");
+        opts.ca_cert_path = Some("file:///etc/ssl/certs/ca.pem".into());
+        opts.ca_cert_blob = Some(vec![1, 2, 3]);
+
+        match super::build_wifi_connection(
+            "enterprise",
+            &WifiSecurity::WpaEap { opts },
+            &default_opts(),
+        ) {
+            Err(ConnectionError::InvalidInput { field, reason }) => {
+                assert_eq!(field, "ca_cert");
+                assert_eq!(reason, "cannot specify both ca_cert_path and ca_cert_blob");
+            }
+            Ok(_) => panic!("conflicting EAP certificate inputs should be rejected"),
+            Err(error) => panic!("expected InvalidInput, got {error:?}"),
+        }
     }
 
     #[test]

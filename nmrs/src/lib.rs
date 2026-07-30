@@ -363,7 +363,8 @@ pub mod raw {
 /// use nmrs::{ConnectionOptions, WifiSecurity};
 ///
 /// let opts = ConnectionOptions::new(true);
-/// let settings = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts);
+/// let settings = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts)
+///     .expect("valid Wi-Fi settings");
 /// // `settings` can be passed straight to NetworkManager via D-Bus.
 /// ```
 pub mod builders {

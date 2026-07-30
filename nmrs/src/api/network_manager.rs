@@ -295,7 +295,7 @@ impl NetworkManager {
     ///     "GuestWiFi",
     ///     &WifiSecurity::WpaPsk { psk: "password".into() },
     ///     &opts,
-    /// );
+    /// )?;
     /// let profile = nm.add_connection(settings).await?;
     /// println!("Saved profile at {}", profile.as_str());
     /// # Ok(())
