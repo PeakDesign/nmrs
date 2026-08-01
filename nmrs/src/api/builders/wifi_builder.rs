@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use zvariant::Value;
 
 use super::connection_builder::ConnectionBuilder;
-use crate::api::models::{self, ConnectionError, ConnectionOptions, EapMethod};
+use crate::api::models::{self, ConnectionOptions, EapCertSource, EapMethod};
 
 /// WiFi band selection.
 #[non_exhaustive]
@@ -92,7 +92,6 @@ impl WifiMode {
 ///
 /// let settings = WifiConnectionBuilder::new("CorpNetwork")
 ///     .wpa_eap(eap_opts)
-///     .expect("valid EAP options")
 ///     .autoconnect(false)
 ///     .build();
 /// ```
@@ -177,34 +176,21 @@ impl WifiConnectionBuilder {
     /// Configures WPA-EAP (Enterprise) security with 802.1X authentication.
     ///
     /// Supports PEAP, TTLS, and TLS methods with various inner authentication protocols.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConnectionError::InvalidInput`] when a certificate or private
-    /// key is supplied as both a path and a blob.
-    #[must_use = "handle the invalid EAP configuration before continuing the builder chain"]
-    pub fn wpa_eap(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
+    #[must_use]
+    pub fn wpa_eap(self, opts: models::EapOptions) -> Self {
         self.wpa_eap_shared("wpa-eap", opts)
     }
 
     /// Configures WPA3-EAP (Enterprise) with 192bit security with 802.1X authentication.
     ///
     /// Supports only EAP-TLS.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConnectionError::InvalidInput`] when a certificate or private
-    /// key is supplied as both a path and a blob.
-    #[must_use = "handle the invalid EAP configuration before continuing the builder chain"]
-    pub fn wpa3_eap_192_bit(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
+    #[must_use]
+    pub fn wpa3_eap_192_bit(self, opts: models::EapOptions) -> Self {
         self.wpa_eap_shared("wpa-eap-suite-b-192", opts)
     }
 
-    fn wpa_eap_shared(
-        mut self,
-        key_mgmt: &'static str,
-        opts: models::EapOptions,
-    ) -> Result<Self, ConnectionError> {
+    #[must_use]
+    fn wpa_eap_shared(mut self, key_mgmt: &'static str, opts: models::EapOptions) -> Self {
         let mut security = HashMap::new();
         security.insert("key-mgmt", Value::from(key_mgmt));
         security.insert("auth-alg", Value::from("open"));
@@ -239,20 +225,16 @@ impl WifiConnectionBuilder {
                 e1x.insert("phase2-auth", Value::from(p2));
             }
             EapMethod::Tls => {
-                if let Some(cert) =
-                    Self::path_or_blob("private_key", opts.private_key_path, opts.private_key_blob)?
-                {
-                    e1x.insert("private-key", cert);
+                if let Some(source) = opts.private_key {
+                    e1x.insert("private-key", Self::cert_source(source));
                 }
 
                 if let Some(password) = opts.private_key_password {
                     e1x.insert("private-key-password", Value::from(password));
                 }
 
-                if let Some(cert) =
-                    Self::path_or_blob("client_cert", opts.client_cert_path, opts.client_cert_blob)?
-                {
-                    e1x.insert("client-cert", cert);
+                if let Some(source) = opts.client_cert {
+                    e1x.insert("client-cert", Self::cert_source(source));
                 }
             }
         }
@@ -260,8 +242,8 @@ impl WifiConnectionBuilder {
         if opts.system_ca_certs {
             e1x.insert("system-ca-certs", Value::from(true));
         }
-        if let Some(cert) = Self::path_or_blob("ca_cert", opts.ca_cert_path, opts.ca_cert_blob)? {
-            e1x.insert("ca-cert", cert);
+        if let Some(source) = opts.ca_cert {
+            e1x.insert("ca-cert", Self::cert_source(source));
         }
         if let Some(dom) = opts.domain_suffix_match {
             e1x.insert("domain-suffix-match", Value::from(dom));
@@ -269,7 +251,7 @@ impl WifiConnectionBuilder {
 
         self.inner = self.inner.with_section("802-1x", e1x);
         self.security_configured = true;
-        Ok(self)
+        self
     }
 
     /// Marks this network as hidden (doesn't broadcast SSID).
@@ -422,19 +404,10 @@ impl WifiConnectionBuilder {
         Value::from(vals)
     }
 
-    fn path_or_blob(
-        attribute: &str,
-        path: Option<String>,
-        blob: Option<Vec<u8>>,
-    ) -> Result<Option<Value<'static>>, ConnectionError> {
-        match (path, blob) {
-            (None, None) => Ok(None),
-            (Some(path), None) => Ok(Some(Self::path(path))),
-            (None, Some(blob)) => Ok(Some(Self::blob(blob))),
-            (Some(_), Some(_)) => Err(ConnectionError::InvalidInput {
-                field: attribute.to_string(),
-                reason: format!("cannot specify both {attribute}_path and {attribute}_blob"),
-            }),
+    fn cert_source(source: EapCertSource) -> Value<'static> {
+        match source {
+            EapCertSource::Path(path) => Self::path(path),
+            EapCertSource::Blob(blob) => Self::blob(blob),
         }
     }
 
@@ -451,7 +424,6 @@ impl WifiConnectionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ConnectionError;
     use crate::models::{EapOptions, Phase2};
 
     #[test]
@@ -534,21 +506,17 @@ mod tests {
             password: "secret".into(),
             anonymous_identity: Some("anon@example.com".into()),
             domain_suffix_match: Some("example.com".into()),
-            ca_cert_path: None,
-            ca_cert_blob: None,
+            ca_cert: None,
             system_ca_certs: true,
             method: EapMethod::Peap,
             phase2: Phase2::Mschapv2,
-            private_key_path: None,
-            private_key_blob: None,
+            private_key: None,
             private_key_password: None,
-            client_cert_path: None,
-            client_cert_blob: None,
+            client_cert: None,
         };
 
         let settings = WifiConnectionBuilder::new("Enterprise")
             .wpa_eap(eap_opts)
-            .expect("valid EAP options")
             .autoconnect(false)
             .ipv4_auto()
             .ipv6_auto()
@@ -566,22 +534,6 @@ mod tests {
             Some(&Value::from("user@example.com".to_string()))
         );
         assert_eq!(e1x.get("phase2-auth"), Some(&Value::from("mschapv2")));
-    }
-
-    #[test]
-    fn rejects_conflicting_eap_ca_cert_path_and_blob() {
-        let mut eap_opts = EapOptions::new("user@example.com", "secret");
-        eap_opts.ca_cert_path = Some("file:///etc/ssl/certs/ca.pem".into());
-        eap_opts.ca_cert_blob = Some(vec![1, 2, 3]);
-
-        match WifiConnectionBuilder::new("Enterprise").wpa_eap(eap_opts) {
-            Err(ConnectionError::InvalidInput { field, reason }) => {
-                assert_eq!(field, "ca_cert");
-                assert_eq!(reason, "cannot specify both ca_cert_path and ca_cert_blob");
-            }
-            Ok(_) => panic!("conflicting EAP certificate inputs should be rejected"),
-            Err(error) => panic!("expected InvalidInput, got {error:?}"),
-        }
     }
 
     #[test]

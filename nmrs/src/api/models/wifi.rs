@@ -192,6 +192,20 @@ pub enum Phase2 {
     Pap,
 }
 
+/// Source for an EAP certificate or private key.
+///
+/// NetworkManager accepts these values either as a `file://` path or as the
+/// encoded bytes. Using one enum makes those representations mutually
+/// exclusive at the type level.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EapCertSource {
+    /// Path to a certificate or private-key file (`file://` URL).
+    Path(String),
+    /// Encoded certificate or private-key bytes.
+    Blob(Vec<u8>),
+}
+
 /// EAP options for WPA-EAP (Enterprise) Wi-Fi connections.
 ///
 /// Configuration for 802.1X authentication, commonly used in corporate
@@ -233,26 +247,20 @@ pub struct EapOptions {
     pub anonymous_identity: Option<String>,
     /// Domain to match against server certificate
     pub domain_suffix_match: Option<String>,
-    /// Path to CA certificate file (file:// URL), mutually exclusive with `ca_cert_blob`
-    pub ca_cert_path: Option<String>,
-    /// CA certificate encoded as DER, mutually exclusive with `ca_cert_path`
-    pub ca_cert_blob: Option<Vec<u8>>,
+    /// CA certificate source.
+    pub ca_cert: Option<EapCertSource>,
     /// Use system CA certificate store
     pub system_ca_certs: bool,
     /// EAP method (PEAP or TTLS)
     pub method: EapMethod,
     /// PEAP/TTLS: Phase 2 inner authentication method
     pub phase2: Phase2,
-    /// TLS: Path to the private key file of the client certificate (file:// URL), mutually exclusive with `private_key_blob`
-    pub private_key_path: Option<String>,
-    /// TLS: Private key of the client certificate encoded as PEM or PKCS#12, mutually exclusive with `private_key_path`
-    pub private_key_blob: Option<Vec<u8>>,
+    /// TLS: Private key source for the client certificate.
+    pub private_key: Option<EapCertSource>,
     /// TLS: Password for the private key file
     pub private_key_password: Option<String>,
-    /// TLS: Path to the client certificate file (file:// URL), mutually exclusive with `client_cert_blob`
-    pub client_cert_path: Option<String>,
-    /// TLS: Client certificate encoded as DER or PKCS#12, mutually exclusive with `client_cert_path`
-    pub client_cert_blob: Option<Vec<u8>>,
+    /// TLS: Client certificate source.
+    pub client_cert: Option<EapCertSource>,
 }
 
 impl fmt::Debug for EapOptions {
@@ -263,19 +271,16 @@ impl fmt::Debug for EapOptions {
             .field("password", &Redacted)
             .field("anonymous_identity", &self.anonymous_identity)
             .field("domain_suffix_match", &self.domain_suffix_match)
-            .field("ca_cert_path", &self.ca_cert_path)
-            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("ca_cert", &self.ca_cert)
             .field("system_ca_certs", &self.system_ca_certs)
             .field("method", &self.method)
             .field("phase2", &self.phase2)
-            .field("private_key_path", &self.private_key_path)
-            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field("private_key", &redact_option(&self.private_key))
             .field(
                 "private_key_password",
                 &redact_option(&self.private_key_password),
             )
-            .field("client_cert_path", &self.client_cert_path)
-            .field("client_cert_blob", &self.client_cert_blob)
+            .field("client_cert", &self.client_cert)
             .finish()
     }
 }
@@ -287,16 +292,13 @@ impl Default for EapOptions {
             password: String::new(),
             anonymous_identity: None,
             domain_suffix_match: None,
-            ca_cert_path: None,
-            ca_cert_blob: None,
+            ca_cert: None,
             system_ca_certs: false,
             method: EapMethod::Peap,
             phase2: Phase2::Mschapv2,
-            private_key_path: None,
-            private_key_blob: None,
+            private_key: None,
             private_key_password: None,
-            client_cert_path: None,
-            client_cert_blob: None,
+            client_cert: None,
         }
     }
 }
@@ -340,8 +342,8 @@ impl EapOptions {
         Self {
             identity: identity.into(),
             method: EapMethod::Tls,
-            private_key_path: Some(private_key_path.into()),
-            client_cert_path: Some(client_cert_path.into()),
+            private_key: Some(EapCertSource::Path(private_key_path.into())),
+            client_cert: Some(EapCertSource::Path(client_cert_path.into())),
             ..Default::default()
         }
     }
@@ -369,8 +371,8 @@ impl EapOptions {
         Self {
             identity: identity.into(),
             method: EapMethod::Tls,
-            private_key_blob: Some(private_key_blob.into()),
-            client_cert_blob: Some(client_cert_blob.into()),
+            private_key: Some(EapCertSource::Blob(private_key_blob.into())),
+            client_cert: Some(EapCertSource::Blob(client_cert_blob.into())),
             ..Default::default()
         }
     }
@@ -415,22 +417,16 @@ impl EapOptions {
     }
 
     /// Sets the path to the CA certificate file (must start with `file://`).
-    ///
-    /// Clears `ca_cert_blob` because they are mutually exclusive.
     #[must_use]
     pub fn with_ca_cert_path(mut self, path: impl Into<String>) -> Self {
-        self.ca_cert_blob = None;
-        self.ca_cert_path = Some(path.into());
+        self.ca_cert = Some(EapCertSource::Path(path.into()));
         self
     }
 
     /// Sets the CA certificate encoded as DER.
-    ///
-    /// Clears `ca_cert_path` because they are mutually exclusive.
     #[must_use]
     pub fn with_ca_cert_blob(mut self, data: impl Into<Vec<u8>>) -> Self {
-        self.ca_cert_path = None;
-        self.ca_cert_blob = Some(data.into());
+        self.ca_cert = Some(EapCertSource::Blob(data.into()));
         self
     }
 
@@ -523,16 +519,13 @@ pub struct EapOptionsBuilder {
     password: Option<String>,
     anonymous_identity: Option<String>,
     domain_suffix_match: Option<String>,
-    ca_cert_path: Option<String>,
-    ca_cert_blob: Option<Vec<u8>>,
+    ca_cert: Option<EapCertSource>,
     system_ca_certs: bool,
     method: Option<EapMethod>,
     phase2: Option<Phase2>,
-    private_key_path: Option<String>,
-    private_key_blob: Option<Vec<u8>>,
+    private_key: Option<EapCertSource>,
     private_key_password: Option<String>,
-    client_cert_path: Option<String>,
-    client_cert_blob: Option<Vec<u8>>,
+    client_cert: Option<EapCertSource>,
 }
 
 impl fmt::Debug for EapOptionsBuilder {
@@ -543,19 +536,16 @@ impl fmt::Debug for EapOptionsBuilder {
             .field("password", &redact_option(&self.password))
             .field("anonymous_identity", &self.anonymous_identity)
             .field("domain_suffix_match", &self.domain_suffix_match)
-            .field("ca_cert_path", &self.ca_cert_path)
-            .field("ca_cert_blob", &self.ca_cert_blob)
+            .field("ca_cert", &self.ca_cert)
             .field("system_ca_certs", &self.system_ca_certs)
             .field("method", &self.method)
             .field("phase2", &self.phase2)
-            .field("private_key_path", &self.private_key_path)
-            .field("private_key_blob", &redact_option(&self.private_key_blob))
+            .field("private_key", &redact_option(&self.private_key))
             .field(
                 "private_key_password",
                 &redact_option(&self.private_key_password),
             )
-            .field("client_cert_path", &self.client_cert_path)
-            .field("client_cert_blob", &self.client_cert_blob)
+            .field("client_cert", &self.client_cert)
             .finish()
     }
 }
@@ -621,8 +611,6 @@ impl EapOptionsBuilder {
     ///
     /// The path must start with `file://` (e.g., "file:///etc/ssl/certs/ca.pem").
     ///
-    /// Clears `ca_cert_blob` because they are mutually exclusive.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -633,14 +621,11 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn ca_cert_path(mut self, path: impl Into<String>) -> Self {
-        self.ca_cert_blob = None;
-        self.ca_cert_path = Some(path.into());
+        self.ca_cert = Some(EapCertSource::Path(path.into()));
         self
     }
 
     /// Sets the CA certificate encoded as DER.
-    ///
-    /// Clears `ca_cert_path` because they are mutually exclusive.
     ///
     /// # Examples
     ///
@@ -652,8 +637,7 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn ca_cert_blob(mut self, data: impl Into<Vec<u8>>) -> Self {
-        self.ca_cert_path = None;
-        self.ca_cert_blob = Some(data.into());
+        self.ca_cert = Some(EapCertSource::Blob(data.into()));
         self
     }
 
@@ -718,8 +702,6 @@ impl EapOptionsBuilder {
     ///
     /// The path must start with `file://` (e.g., "file:///etc/ssl/private/client.key").
     ///
-    /// Clears `private_key_blob` because they are mutually exclusive.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -730,14 +712,11 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn private_key_path(mut self, path: impl Into<String>) -> Self {
-        self.private_key_blob = None;
-        self.private_key_path = Some(path.into());
+        self.private_key = Some(EapCertSource::Path(path.into()));
         self
     }
 
     /// Sets the private key of the client certificate encoded as PEM or PKCS#12.
-    ///
-    /// Clears `private_key_path` because they are mutually exclusive.
     ///
     /// # Examples
     ///
@@ -749,8 +728,7 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn private_key_blob(mut self, data: impl Into<Vec<u8>>) -> Self {
-        self.private_key_path = None;
-        self.private_key_blob = Some(data.into());
+        self.private_key = Some(EapCertSource::Blob(data.into()));
         self
     }
 
@@ -774,8 +752,6 @@ impl EapOptionsBuilder {
     ///
     /// The path must start with `file://` (e.g., "file:///etc/ssl/certs/client.crt").
     ///
-    /// Clears `client_cert_blob` because they are mutually exclusive.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -786,14 +762,11 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn client_cert_path(mut self, path: impl Into<String>) -> Self {
-        self.client_cert_blob = None;
-        self.client_cert_path = Some(path.into());
+        self.client_cert = Some(EapCertSource::Path(path.into()));
         self
     }
 
     /// Sets the client certificate encoded as DER or PKCS#12.
-    ///
-    /// Clears `client_cert_path` because they are mutually exclusive.
     ///
     /// # Examples
     ///
@@ -805,8 +778,7 @@ impl EapOptionsBuilder {
     /// ```
     #[must_use]
     pub fn client_cert_blob(mut self, data: impl Into<Vec<u8>>) -> Self {
-        self.client_cert_path = None;
-        self.client_cert_blob = Some(data.into());
+        self.client_cert = Some(EapCertSource::Blob(data.into()));
         self
     }
 
@@ -835,38 +807,16 @@ impl EapOptionsBuilder {
         let is_peap_or_ttls =
             self.method == Some(EapMethod::Peap) || self.method == Some(EapMethod::Ttls);
 
-        if let (Some(_), Some(_)) = (&self.ca_cert_path, &self.ca_cert_blob) {
+        if let (Some(EapMethod::Tls), None) = (&self.method, &self.private_key) {
             return Err(ConnectionError::IncompleteBuilder(
-                "EAP CA certificate cannot be specified both as a path and blob".into(),
+                "EAP private key is required for TLS (use .private_key_path() or .private_key_blob())".into(),
             ));
         }
 
-        match (&self.method, &self.private_key_path, &self.private_key_blob) {
-            (_, Some(_), Some(_)) => {
-                return Err(ConnectionError::IncompleteBuilder(
-                    "EAP private key cannot be specified both as a path and blob".into(),
-                ));
-            }
-            (Some(EapMethod::Tls), None, None) => {
-                return Err(ConnectionError::IncompleteBuilder(
-                    "EAP private key is required for TLS (use .private_key_path() or .private_key_blob())".into(),
-                ));
-            }
-            _ => {}
-        }
-
-        match (&self.method, &self.client_cert_path, &self.client_cert_blob) {
-            (_, Some(_), Some(_)) => {
-                return Err(ConnectionError::IncompleteBuilder(
-                    "EAP client certificate cannot be specified both as a path and blob".into(),
-                ));
-            }
-            (Some(EapMethod::Tls), None, None) => {
-                return Err(ConnectionError::IncompleteBuilder(
-                    "EAP client certificate is required for TLS (use .client_cert_path() or .client_cert_blob())".into(),
-                ));
-            }
-            _ => {}
+        if let (Some(EapMethod::Tls), None) = (&self.method, &self.client_cert) {
+            return Err(ConnectionError::IncompleteBuilder(
+                "EAP client certificate is required for TLS (use .client_cert_path() or .client_cert_blob())".into(),
+            ));
         }
 
         Ok(EapOptions {
@@ -886,8 +836,7 @@ impl EapOptionsBuilder {
             },
             anonymous_identity: self.anonymous_identity,
             domain_suffix_match: self.domain_suffix_match,
-            ca_cert_path: self.ca_cert_path,
-            ca_cert_blob: self.ca_cert_blob,
+            ca_cert: self.ca_cert,
             system_ca_certs: self.system_ca_certs,
             method: self.method.ok_or_else(|| {
                 ConnectionError::IncompleteBuilder("EAP method is required (use .method())".into())
@@ -901,11 +850,9 @@ impl EapOptionsBuilder {
             } else {
                 Phase2::Mschapv2
             },
-            private_key_path: self.private_key_path,
-            private_key_blob: self.private_key_blob,
+            private_key: self.private_key,
             private_key_password: self.private_key_password,
-            client_cert_path: self.client_cert_path,
-            client_cert_blob: self.client_cert_blob,
+            client_cert: self.client_cert,
         })
     }
 }

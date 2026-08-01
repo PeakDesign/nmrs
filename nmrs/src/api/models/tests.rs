@@ -211,16 +211,13 @@ fn wifi_security_eap() {
             password: "secret".into(),
             anonymous_identity: None,
             domain_suffix_match: None,
-            ca_cert_path: None,
-            ca_cert_blob: None,
+            ca_cert: None,
             system_ca_certs: false,
             method: EapMethod::Peap,
             phase2: Phase2::Mschapv2,
-            private_key_path: None,
-            private_key_blob: None,
+            private_key: None,
             private_key_password: None,
-            client_cert_path: None,
-            client_cert_blob: None,
+            client_cert: None,
         },
     };
     assert!(eap.secured());
@@ -236,16 +233,17 @@ fn wifi_security_eap_192bit() {
             password: "".into(),
             anonymous_identity: None,
             domain_suffix_match: None,
-            ca_cert_path: Some("file:///etc/ssl/certs/ca.crt".into()),
-            ca_cert_blob: None,
+            ca_cert: Some(EapCertSource::Path("file:///etc/ssl/certs/ca.crt".into())),
             system_ca_certs: false,
             method: EapMethod::Tls,
             phase2: Phase2::Mschapv2,
-            private_key_path: Some("file:///etc/ssl/private/client.key".into()),
-            private_key_blob: None,
+            private_key: Some(EapCertSource::Path(
+                "file:///etc/ssl/private/client.key".into(),
+            )),
             private_key_password: Some("password".into()),
-            client_cert_path: Some("file:///etc/ssl/certs/client.crt".into()),
-            client_cert_blob: None,
+            client_cert: Some(EapCertSource::Path(
+                "file:///etc/ssl/certs/client.crt".into(),
+            )),
         },
     };
     assert!(eap.secured());
@@ -1016,7 +1014,7 @@ fn test_eap_options_builder_basic() {
     assert_eq!(opts.phase2, Phase2::Mschapv2);
     assert!(opts.anonymous_identity.is_none());
     assert!(opts.domain_suffix_match.is_none());
-    assert!(opts.ca_cert_path.is_none());
+    assert!(opts.ca_cert.is_none());
     assert!(!opts.system_ca_certs);
 }
 
@@ -1044,8 +1042,8 @@ fn test_eap_options_builder_with_optionals() {
     );
     assert_eq!(opts.domain_suffix_match, Some("company.com".into()));
     assert_eq!(
-        opts.ca_cert_path,
-        Some("file:///etc/ssl/certs/ca.pem".into())
+        opts.ca_cert,
+        Some(EapCertSource::Path("file:///etc/ssl/certs/ca.pem".into()))
     );
     assert!(opts.system_ca_certs);
 }
@@ -1080,8 +1078,10 @@ fn test_eap_options_builder_ttls_pap() {
     assert_eq!(opts.method, EapMethod::Ttls);
     assert_eq!(opts.phase2, Phase2::Pap);
     assert_eq!(
-        opts.ca_cert_path,
-        Some("file:///etc/ssl/certs/university.pem".into())
+        opts.ca_cert,
+        Some(EapCertSource::Path(
+            "file:///etc/ssl/certs/university.pem".into()
+        ))
     );
 }
 
@@ -1099,17 +1099,21 @@ fn test_eap_options_builder_tls() {
 
     assert_eq!(opts.method, EapMethod::Tls);
     assert_eq!(
-        opts.ca_cert_path,
-        Some("file:///etc/ssl/certs/ca.pem".into())
+        opts.ca_cert,
+        Some(EapCertSource::Path("file:///etc/ssl/certs/ca.pem".into()))
     );
     assert_eq!(
-        opts.private_key_path,
-        Some("file:///etc/ssl/private/client.key".into())
+        opts.private_key,
+        Some(EapCertSource::Path(
+            "file:///etc/ssl/private/client.key".into()
+        ))
     );
     assert_eq!(opts.private_key_password, Some("password".into()));
     assert_eq!(
-        opts.client_cert_path,
-        Some("file:///etc/ssl/certs/client.pem".into())
+        opts.client_cert,
+        Some(EapCertSource::Path(
+            "file:///etc/ssl/certs/client.pem".into()
+        ))
     );
 }
 
@@ -1159,8 +1163,7 @@ fn test_eap_options_builder_ca_cert_blob_overrides_path() {
         .unwrap();
 
     assert_eq!(opts.method, EapMethod::Tls);
-    assert_eq!(opts.ca_cert_path, None);
-    assert_eq!(opts.ca_cert_blob, Some(vec![1]));
+    assert_eq!(opts.ca_cert, Some(EapCertSource::Blob(vec![1])));
 }
 
 #[test]
@@ -1177,8 +1180,7 @@ fn test_eap_options_builder_path_blob_private_key() {
         .unwrap();
 
     assert_eq!(opts.method, EapMethod::Tls);
-    assert_eq!(opts.private_key_path, None);
-    assert_eq!(opts.private_key_blob, Some(vec![1]));
+    assert_eq!(opts.private_key, Some(EapCertSource::Blob(vec![1])));
 }
 
 #[test]
@@ -1195,8 +1197,7 @@ fn test_eap_options_builder_path_blob_client_cert() {
         .unwrap();
 
     assert_eq!(opts.method, EapMethod::Tls);
-    assert_eq!(opts.client_cert_path, None);
-    assert_eq!(opts.client_cert_blob, Some(vec![1]));
+    assert_eq!(opts.client_cert, Some(EapCertSource::Blob(vec![1])));
 }
 
 #[test]

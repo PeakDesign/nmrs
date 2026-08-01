@@ -6,9 +6,9 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ### Changed
 
-- **Breaking:** WPA-EAP connection builders and `build_wifi_connection()` now
-  return `Result`, reporting conflicting certificate path/blob inputs as
-  `ConnectionError::InvalidInput` instead of panicking.
+- **Breaking:** `EapOptions` now represents each certificate or private key as
+  an `Option<EapCertSource>`, making path/blob conflicts unrepresentable while
+  preserving infallible `build_wifi_connection()` and fluent WPA-EAP chaining.
   ([#478](https://github.com/freedesktop-rs/nmrs/issues/478))
 
 ## [3.4.2] - 2026-07-27

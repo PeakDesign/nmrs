@@ -32,7 +32,7 @@ let settings = build_wifi_connection(
     "GuestWiFi",
     &WifiSecurity::WpaPsk { psk: "password".into() },
     &ConnectionOptions::new(true),
-)?;
+);
 let profile = nm.add_connection(settings).await?;
 ```
 

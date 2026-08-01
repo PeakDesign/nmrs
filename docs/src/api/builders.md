@@ -134,11 +134,7 @@ use nmrs::builders::{build_wifi_connection, build_ethernet_connection};
 use nmrs::{WifiSecurity, ConnectionOptions};
 
 // Wi-Fi
-let wifi = build_wifi_connection(
-    "MyNetwork",
-    &WifiSecurity::Open,
-    &ConnectionOptions::default(),
-)?;
+let wifi = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &ConnectionOptions::default());
 
 // Ethernet
 let eth = build_ethernet_connection("eth0", &ConnectionOptions::default());
@@ -199,7 +195,7 @@ let settings = build_wifi_connection(
     "GuestWiFi",
     &WifiSecurity::WpaPsk { psk: "password".into() },
     &ConnectionOptions::new(true),
-)?;
+);
 let profile = nm.add_connection(settings).await?;
 ```
 

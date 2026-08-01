@@ -112,7 +112,7 @@
 //! - [`Device`] / [`DeviceType`] / [`DeviceState`] — network devices and their state
 //! - [`Network`] / [`AccessPoint`] / [`NetworkInfo`] — discovered Wi-Fi data
 //! - [`WifiDevice`] — per-Wi-Fi-device summary
-//! - [`WifiSecurity`] / [`EapOptions`] / [`EapMethod`] / [`Phase2`] — Wi-Fi security
+//! - [`WifiSecurity`] / [`EapOptions`] / [`EapCertSource`] / [`EapMethod`] / [`Phase2`] — Wi-Fi security
 //! - [`ConnectionOptions`] / [`TimeoutConfig`] — connection knobs
 //! - [`WireGuardConfig`] / [`WireGuardPeer`] — WireGuard configuration
 //! - [`OpenVpnConfig`] / [`OpenVpnAuthType`] / [`OpenVpnProxy`] — OpenVPN configuration
@@ -363,8 +363,7 @@ pub mod raw {
 /// use nmrs::{ConnectionOptions, WifiSecurity};
 ///
 /// let opts = ConnectionOptions::new(true);
-/// let settings = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts)
-///     .expect("valid Wi-Fi settings");
+/// let settings = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts);
 /// // `settings` can be passed straight to NetworkManager via D-Bus.
 /// ```
 pub mod builders {
@@ -435,6 +434,7 @@ pub mod models {
 }
 
 // Re-export commonly used types at crate root for convenience
+pub use api::models::EapCertSource;
 #[allow(deprecated)]
 pub use api::models::{
     AccessPoint, ActiveConnection, ActiveConnectionState, ActiveOtherConnection,
