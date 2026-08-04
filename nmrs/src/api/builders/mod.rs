@@ -54,7 +54,8 @@
 //!     "MyNetwork",
 //!     &WifiSecurity::WpaPsk { psk: "password".into() },
 //!     &opts,
-//! );
+//! )
+//! .expect("valid Wi-Fi settings");
 //! let eth = build_ethernet_connection("eth0", &opts);
 //! ```
 //!

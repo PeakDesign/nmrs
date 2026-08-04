@@ -319,31 +319,19 @@ pub struct EapOptions {
     pub password: String,
     pub anonymous_identity: Option<String>,
     pub domain_suffix_match: Option<String>,
-    pub ca_cert: Option<EapCertSource>,
+    pub ca_cert_path: Option<String>,
     pub system_ca_certs: bool,
     pub method: EapMethod,
     pub phase2: Phase2,
-    pub private_key: Option<EapCertSource>,
-    pub private_key_password: Option<String>,
-    pub client_cert: Option<EapCertSource>,
-}
-
-pub enum EapCertSource {
-    Path(String),
-    Blob(Vec<u8>),
 }
 ```
 
-Each certificate or private key has exactly one source representation. Use the
-existing `*_path` or `*_blob` builder methods to select it.
-
-Constructors: `new(identity, password)`, `new_tls_path(...)`,
-`new_tls_blob(...)`, `builder()`
+Constructors: `new(identity, password)`, `builder()`
 
 ### EapMethod / Phase2
 
 ```rust
-pub enum EapMethod { Peap, Ttls, Tls }
+pub enum EapMethod { Peap, Ttls }
 pub enum Phase2 { Mschapv2, Pap }
 ```
 
