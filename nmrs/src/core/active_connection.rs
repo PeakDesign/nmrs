@@ -91,7 +91,7 @@ async fn failed_active_path_vanished(
     Ok(active_path_is_absent(active_path, &current_paths))
 }
 
-fn is_missing_dbus_object_error(error: &ConnectionError) -> bool {
+pub(crate) fn is_missing_dbus_object_error(error: &ConnectionError) -> bool {
     let dbus_error = match error {
         ConnectionError::Dbus(error) => error,
         ConnectionError::DbusOperation { source, .. } => source,

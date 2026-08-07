@@ -18,6 +18,7 @@ use crate::api::models::{
     VpnSecretFlags, VpnType,
 };
 use crate::builders::{build_openvpn_connection, build_wireguard_connection};
+use crate::core::active_connection::is_missing_dbus_object_error;
 use crate::core::state_wait::wait_for_connection_activation;
 use crate::dbus::{NMActiveConnectionProxy, NMProxy};
 use crate::models::VpnConfiguration;
@@ -906,6 +907,25 @@ pub(crate) async fn forget_vpn(conn: &Connection, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Classifies a D-Bus read that can race with VPN teardown.
+///
+/// Returns `Ok(Some(value))` on success, `Ok(None)` when the underlying object
+/// vanished (a missing-object D-Bus error, expected when a VPN is disconnected
+/// externally while we read it), and `Err(_)` for genuinely unexpected errors.
+fn vanished_or_err<T>(result: std::result::Result<T, zbus::Error>) -> Result<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) => {
+            let error = ConnectionError::from(error);
+            if is_missing_dbus_object_error(&error) {
+                Ok(None)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
 /// Gets detailed information about an active VPN connection.
 pub(crate) async fn get_vpn_info(conn: &Connection, name: &str) -> Result<VpnConnectionInfo> {
     validate_connection_name(name)?;
@@ -966,20 +986,36 @@ pub(crate) async fn get_vpn_info(conn: &Connection, name: &str) -> Result<VpnCon
             continue;
         }
 
-        let state_val: u32 = ac_proxy.get_property("State").await?;
+        // From here on the active connection can be torn down concurrently
+        // (e.g. the user disconnects the VPN from another app). A vanished
+        // object means the VPN is no longer active, so skip it and let the
+        // loop fall through to `NoVpnConnection` instead of surfacing a raw
+        // D-Bus error such as "a VPN interface does not exist".
+        let Some(state_val) = vanished_or_err::<u32>(ac_proxy.get_property("State").await)? else {
+            continue;
+        };
         let state = DeviceState::from(state_val);
 
-        let dev_paths: Vec<OwnedObjectPath> = ac_proxy.get_property("Devices").await?;
-        let interface = if let Some(dev_path) = dev_paths.first() {
-            let dev_proxy = nm_proxy(
+        let Some(dev_paths) =
+            vanished_or_err::<Vec<OwnedObjectPath>>(ac_proxy.get_property("Devices").await)?
+        else {
+            continue;
+        };
+        // The VPN device (e.g. `tun0`) may already be gone while the active
+        // connection lingers in the deactivating state; degrade the interface
+        // name to `None` rather than failing the whole call.
+        let interface = match dev_paths.first() {
+            Some(dev_path) => match nm_proxy(
                 conn,
                 dev_path.clone(),
                 "org.freedesktop.NetworkManager.Device",
             )
-            .await?;
-            Some(dev_proxy.get_property::<String>("Interface").await?)
-        } else {
-            None
+            .await
+            {
+                Ok(dev_proxy) => dev_proxy.get_property::<String>("Interface").await.ok(),
+                Err(_) => None,
+            },
+            None => None,
         };
 
         let gateway = match kind {
@@ -990,11 +1026,19 @@ pub(crate) async fn get_vpn_info(conn: &Connection, name: &str) -> Result<VpnCon
             VpnKind::Plugin => extract_openvpn_gateway(&settings_map),
         };
 
-        let ip4_path: OwnedObjectPath = ac_proxy.get_property("Ip4Config").await?;
-        let (ip4_address, dns_servers) = if ip4_path.as_str() != "/" {
-            let ip4_proxy =
-                nm_proxy(conn, ip4_path, "org.freedesktop.NetworkManager.IP4Config").await?;
-
+        let Some(ip4_path) =
+            vanished_or_err::<OwnedObjectPath>(ac_proxy.get_property("Ip4Config").await)?
+        else {
+            continue;
+        };
+        let ip4_proxy = if ip4_path.as_str() != "/" {
+            nm_proxy(conn, ip4_path, "org.freedesktop.NetworkManager.IP4Config")
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let (ip4_address, dns_servers) = if let Some(ip4_proxy) = ip4_proxy {
             let ip4_address = if let Ok(addr_array) = ip4_proxy
                 .get_property::<Vec<HashMap<String, zvariant::Value>>>("AddressData")
                 .await
@@ -1037,11 +1081,19 @@ pub(crate) async fn get_vpn_info(conn: &Connection, name: &str) -> Result<VpnCon
             (None, vec![])
         };
 
-        let ip6_path: OwnedObjectPath = ac_proxy.get_property("Ip6Config").await?;
-        let ip6_address = if ip6_path.as_str() != "/" {
-            let ip6_proxy =
-                nm_proxy(conn, ip6_path, "org.freedesktop.NetworkManager.IP6Config").await?;
-
+        let Some(ip6_path) =
+            vanished_or_err::<OwnedObjectPath>(ac_proxy.get_property("Ip6Config").await)?
+        else {
+            continue;
+        };
+        let ip6_proxy = if ip6_path.as_str() != "/" {
+            nm_proxy(conn, ip6_path, "org.freedesktop.NetworkManager.IP6Config")
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let ip6_address = if let Some(ip6_proxy) = ip6_proxy {
             if let Ok(addr_array) = ip6_proxy
                 .get_property::<Vec<HashMap<String, zvariant::Value>>>("AddressData")
                 .await
@@ -1237,6 +1289,32 @@ mod tests {
         )]);
         let settings = HashMap::from([("connection".to_string(), conn_sec)]);
         assert_eq!(detect_vpn_kind(&settings), None);
+    }
+
+    #[test]
+    fn vanished_or_err_passes_through_success() {
+        assert!(matches!(vanished_or_err::<u32>(Ok(7)), Ok(Some(7))));
+    }
+
+    #[test]
+    fn vanished_or_err_treats_missing_object_as_vanished() {
+        for error in [
+            zbus::fdo::Error::UnknownMethod("gone".into()),
+            zbus::fdo::Error::UnknownObject("gone".into()),
+            zbus::fdo::Error::UnknownInterface("gone".into()),
+            zbus::fdo::Error::UnknownProperty("gone".into()),
+        ] {
+            let result = vanished_or_err::<u32>(Err(zbus::Error::FDO(Box::new(error))));
+            assert!(matches!(result, Ok(None)), "missing-object error");
+        }
+    }
+
+    #[test]
+    fn vanished_or_err_propagates_unexpected_errors() {
+        let result = vanished_or_err::<u32>(Err(zbus::Error::FDO(Box::new(
+            zbus::fdo::Error::AccessDenied("denied".into()),
+        ))));
+        assert!(matches!(result, Err(ConnectionError::Dbus(_))));
     }
 
     #[test]

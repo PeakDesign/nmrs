@@ -11,6 +11,15 @@ All notable changes to the `nmrs` crate will be documented in this file.
   `ConnectionError::InvalidInput` instead of panicking.
   ([#478](https://github.com/freedesktop-rs/nmrs/issues/478))
 
+### Fixed
+
+- `get_vpn_info()` no longer surfaces a raw D-Bus error (e.g. "a VPN interface
+  does not exist") when a VPN is disconnected externally while it is being read.
+  The active connection and its device can vanish mid-read; missing-object
+  reads are now treated as the VPN no longer being active (`NoVpnConnection`),
+  and the interface/IP details degrade gracefully.
+  ([#523](https://github.com/freedesktop-rs/nmrs/issues/523))
+
 ## [3.4.2] - 2026-07-27
 ### Changed
 
