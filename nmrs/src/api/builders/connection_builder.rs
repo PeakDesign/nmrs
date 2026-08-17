@@ -295,6 +295,30 @@ impl ConnectionBuilder {
         self
     }
 
+    /// Configures IPv4 for internet connection sharing
+    /// with a custom IP range
+    ///
+    /// The connection will provide DHCP and NAT for other devices.
+    #[must_use]
+    pub fn ipv4_shared_with_ip_range(mut self, addresses: Vec<IpConfig>) -> Self {
+        let mut ipv4 = HashMap::new();
+        ipv4.insert("method", Value::from("shared"));
+
+        let address_data: Vec<HashMap<String, Value<'static>>> = addresses
+            .into_iter()
+            .map(|config| {
+                let mut addr_dict = HashMap::new();
+                addr_dict.insert("address".to_string(), Value::from(config.address));
+                addr_dict.insert("prefix".to_string(), Value::from(config.prefix));
+                addr_dict
+            })
+            .collect();
+        ipv4.insert("address-data", Value::from(address_data));
+
+        self.settings.insert("ipv4", ipv4);
+        self
+    }
+
     /// Sets IPv4 DNS servers.
     ///
     /// NetworkManager's legacy `ipv4.dns` property is an array of `in_addr_t`,
@@ -665,19 +689,34 @@ mod tests {
     }
 
     #[test]
-    fn configures_ipv4_link_local_and_shared() {
+    fn configures_ipv4_link_local() {
         let link_local = ConnectionBuilder::new("802-3-ethernet", "local")
             .ipv4_link_local()
             .build();
-        let shared = ConnectionBuilder::new("802-3-ethernet", "shared")
-            .ipv4_shared()
-            .build();
-
         assert_eq!(
             link_local["ipv4"].get("method"),
             Some(&Value::from("link-local"))
         );
+    }
+
+    #[test]
+    fn configures_ipv4_shared() {
+        let shared = ConnectionBuilder::new("802-3-ethernet", "shared")
+            .ipv4_shared()
+            .build();
         assert_eq!(shared["ipv4"].get("method"), Some(&Value::from("shared")));
+    }
+
+    #[test]
+    fn configures_ipv4_shared_with_ip_range() {
+        let settings = ConnectionBuilder::new("802-3-ethernet", "shared")
+            .ipv4_shared_with_ip_range(vec![IpConfig::new("192.168.1.100", 24)])
+            .build();
+        let shared = settings.get("ipv4").unwrap();
+        assert_eq!(shared.get("method"), Some(&Value::from("shared")));
+        let addresses = shared.get("address-data").unwrap();
+        assert_eq!(addresses.value_signature().to_string(), "aa{sv}");
+        assert_eq!(addresses, &address_data("192.168.1.100", 24));
     }
 
     /// Decodes NetworkManager's `ipv4.dns` payload back into addresses.
