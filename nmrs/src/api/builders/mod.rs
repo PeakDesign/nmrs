@@ -22,7 +22,7 @@
 //!
 //! # Free functions
 //!
-//! - [`build_wifi_connection`] / [`build_ethernet_connection`] (in [`wifi`])
+//! - [`try_build_wifi_connection`] / [`build_ethernet_connection`] (in [`wifi`])
 //! - [`build_wireguard_connection`] / [`build_openvpn_connection`] (in [`vpn`])
 //! - [`build_bluetooth_connection`] (in [`bluetooth`])
 //! - [`build_vlan_connection`] (in [`vlan`])
@@ -45,12 +45,12 @@
 //! ## Wi-Fi (free function)
 //!
 //! ```rust
-//! use nmrs::builders::{build_ethernet_connection, build_wifi_connection};
+//! use nmrs::builders::{build_ethernet_connection, try_build_wifi_connection};
 //! use nmrs::{ConnectionOptions, WifiSecurity};
 //!
 //! let opts = ConnectionOptions::new(true).with_priority(10);
 //!
-//! let wifi = build_wifi_connection(
+//! let wifi = try_build_wifi_connection(
 //!     "MyNetwork",
 //!     &WifiSecurity::WpaPsk { psk: "password".into() },
 //!     &opts,
@@ -123,4 +123,7 @@ pub use wireguard_builder::WireGuardBuilder;
 pub use bluetooth::build_bluetooth_connection;
 pub use vlan::build_vlan_connection;
 pub use vpn::{build_openvpn_connection, build_wireguard_connection};
-pub use wifi::{build_ethernet_connection, build_wifi_connection};
+pub use wifi::{build_ethernet_connection, try_build_wifi_connection};
+// Re-exported for backward compatibility until the deprecation is removed.
+#[allow(deprecated)]
+pub use wifi::build_wifi_connection;

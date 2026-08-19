@@ -130,11 +130,11 @@ The `build()` method validates all fields and returns `Result<Settings, Connecti
 Convenience functions that wrap the builders:
 
 ```rust
-use nmrs::builders::{build_wifi_connection, build_ethernet_connection};
+use nmrs::builders::{try_build_wifi_connection, build_ethernet_connection};
 use nmrs::{WifiSecurity, ConnectionOptions};
 
 // Wi-Fi
-let wifi = build_wifi_connection(
+let wifi = try_build_wifi_connection(
     "MyNetwork",
     &WifiSecurity::Open,
     &ConnectionOptions::default(),
@@ -191,11 +191,11 @@ async fn start_hotspot(nm: &NetworkManager, interface: &str) -> nmrs::Result<()>
 To persist a profile without bringing it up immediately — the workflow from [#463](https://github.com/freedesktop-rs/nmrs/issues/463):
 
 ```rust
-use nmrs::builders::build_wifi_connection;
+use nmrs::builders::try_build_wifi_connection;
 use nmrs::{ConnectionOptions, NetworkManager, WifiSecurity};
 
 let nm = NetworkManager::new().await?;
-let settings = build_wifi_connection(
+let settings = try_build_wifi_connection(
     "GuestWiFi",
     &WifiSecurity::WpaPsk { psk: "password".into() },
     &ConnectionOptions::new(true),

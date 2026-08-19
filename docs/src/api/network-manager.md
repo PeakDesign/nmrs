@@ -24,11 +24,11 @@ let config = nm.timeout_config();
 ## Saving Profiles Without Activating
 
 ```rust
-use nmrs::builders::build_wifi_connection;
+use nmrs::builders::try_build_wifi_connection;
 use nmrs::{ConnectionOptions, NetworkManager, WifiSecurity};
 
 let nm = NetworkManager::new().await?;
-let settings = build_wifi_connection(
+let settings = try_build_wifi_connection(
     "GuestWiFi",
     &WifiSecurity::WpaPsk { psk: "password".into() },
     &ConnectionOptions::new(true),

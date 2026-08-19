@@ -58,29 +58,82 @@ use crate::api::models::{self, ConnectionError, ConnectionOptions};
 /// This function is maintained for backward compatibility. For new code,
 /// consider using `WifiConnectionBuilder` for a more ergonomic API.
 ///
-/// # Errors
-///
-/// Returns [`ConnectionError::InvalidInput`] when an EAP certificate or key
-/// is supplied as both a path and a blob.
-#[must_use = "handle invalid Wi-Fi EAP inputs before using the settings"]
+/// If an EAP certificate or key is supplied as both a path and a blob, the path
+/// is used and a warning is logged. Prefer [`try_build_wifi_connection`], which
+/// reports the conflict as an error instead.
+#[must_use]
+#[deprecated(
+    since = "3.5.0",
+    note = "use `try_build_wifi_connection`, which reports conflicting EAP certificate path/blob inputs as an error instead of silently preferring the path"
+)]
 pub fn build_wifi_connection(
     ssid: &str,
     security: &models::WifiSecurity,
     opts: &ConnectionOptions,
-) -> Result<HashMap<&'static str, HashMap<&'static str, Value<'static>>>, ConnectionError> {
-    let mut builder = WifiConnectionBuilder::new(ssid)
-        .options(opts)
-        .ipv4_auto()
-        .ipv6_auto();
+) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
+    // The deprecated EAP builders warn about path/blob conflicts themselves.
+    #[allow(deprecated)]
+    let builder = match security {
+        models::WifiSecurity::Open => base_wifi_builder(ssid, opts).open(),
+        models::WifiSecurity::WpaPsk { psk } => base_wifi_builder(ssid, opts).wpa_psk(psk),
+        models::WifiSecurity::WpaEap { opts: eap } => {
+            base_wifi_builder(ssid, opts).wpa_eap(eap.clone())
+        }
+        models::WifiSecurity::Wpa3Eap192bit { opts: eap } => {
+            base_wifi_builder(ssid, opts).wpa3_eap_192_bit(eap.clone())
+        }
+    };
 
-    builder = match security {
-        models::WifiSecurity::Open => builder.open(),
-        models::WifiSecurity::WpaPsk { psk } => builder.wpa_psk(psk),
-        models::WifiSecurity::WpaEap { opts } => builder.wpa_eap(opts.clone())?,
-        models::WifiSecurity::Wpa3Eap192bit { opts } => builder.wpa3_eap_192_bit(opts.clone())?,
+    builder.build()
+}
+
+/// Builds a complete Wi-Fi connection settings dictionary, reporting invalid
+/// EAP input instead of silently resolving it.
+///
+/// Behaves exactly like [`build_wifi_connection`] for every valid input.
+///
+/// # Errors
+///
+/// Returns [`ConnectionError::InvalidInput`] when an EAP certificate or key
+/// is supplied as both a path and a blob.
+///
+/// # Example
+///
+/// ```rust
+/// use nmrs::builders::try_build_wifi_connection;
+/// use nmrs::{ConnectionOptions, WifiSecurity};
+///
+/// let settings = try_build_wifi_connection(
+///     "MyNetwork",
+///     &WifiSecurity::WpaPsk { psk: "password".into() },
+///     &ConnectionOptions::new(true),
+/// )?;
+/// # Ok::<(), nmrs::ConnectionError>(())
+/// ```
+pub fn try_build_wifi_connection(
+    ssid: &str,
+    security: &models::WifiSecurity,
+    opts: &ConnectionOptions,
+) -> Result<HashMap<&'static str, HashMap<&'static str, Value<'static>>>, ConnectionError> {
+    let base = base_wifi_builder(ssid, opts);
+
+    let builder = match security {
+        models::WifiSecurity::Open => base.open(),
+        models::WifiSecurity::WpaPsk { psk } => base.wpa_psk(psk),
+        models::WifiSecurity::WpaEap { opts: eap } => base.try_wpa_eap(eap.clone())?,
+        models::WifiSecurity::Wpa3Eap192bit { opts: eap } => {
+            base.try_wpa3_eap_192_bit(eap.clone())?
+        }
     };
 
     Ok(builder.build())
+}
+
+fn base_wifi_builder(ssid: &str, opts: &ConnectionOptions) -> WifiConnectionBuilder {
+    WifiConnectionBuilder::new(ssid)
+        .options(opts)
+        .ipv4_auto()
+        .ipv6_auto()
 }
 
 /// Builds a complete Ethernet connection settings dictionary.
@@ -124,7 +177,7 @@ mod tests {
         security: &WifiSecurity,
         opts: &ConnectionOptions,
     ) -> HashMap<&'static str, HashMap<&'static str, Value<'static>>> {
-        super::build_wifi_connection(ssid, security, opts).expect("valid Wi-Fi settings")
+        super::try_build_wifi_connection(ssid, security, opts).expect("valid Wi-Fi settings")
     }
 
     fn default_opts() -> ConnectionOptions {
@@ -160,7 +213,7 @@ mod tests {
         opts.ca_cert_path = Some("file:///etc/ssl/certs/ca.pem".into());
         opts.ca_cert_blob = Some(vec![1, 2, 3]);
 
-        match super::build_wifi_connection(
+        match super::try_build_wifi_connection(
             "enterprise",
             &WifiSecurity::WpaEap { opts },
             &default_opts(),
