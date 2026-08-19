@@ -48,6 +48,54 @@ impl WifiMode {
     }
 }
 
+/// The three EAP inputs that accept either a filesystem path or an inline blob.
+///
+/// Supplying both for the same field is ambiguous: NetworkManager takes exactly
+/// one value per key, so one of the two would be silently discarded.
+fn eap_cert_conflicts(opts: &models::EapOptions) -> impl Iterator<Item = &'static str> + '_ {
+    [
+        (
+            "ca_cert",
+            opts.ca_cert_path.is_some(),
+            opts.ca_cert_blob.is_some(),
+        ),
+        (
+            "client_cert",
+            opts.client_cert_path.is_some(),
+            opts.client_cert_blob.is_some(),
+        ),
+        (
+            "private_key",
+            opts.private_key_path.is_some(),
+            opts.private_key_blob.is_some(),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(field, has_path, has_blob)| (has_path && has_blob).then_some(field))
+}
+
+/// Rejects EAP options that supply both a path and a blob for the same field.
+fn validate_eap_opts(opts: &models::EapOptions) -> Result<(), ConnectionError> {
+    match eap_cert_conflicts(opts).next() {
+        Some(field) => Err(ConnectionError::InvalidInput {
+            field: field.to_string(),
+            reason: format!("cannot specify both {field}_path and {field}_blob"),
+        }),
+        None => Ok(()),
+    }
+}
+
+/// Logs the conflicts [`validate_eap_opts`] would reject, for the deprecated
+/// infallible builders that cannot report them to the caller.
+fn warn_eap_conflicts(opts: &models::EapOptions) {
+    for field in eap_cert_conflicts(opts) {
+        log::warn!(
+            "both {field}_path and {field}_blob were supplied; using {field}_path. \
+             Use the `try_*` builder to receive this as an error instead."
+        );
+    }
+}
+
 /// Builder for WiFi (802.11) connections.
 ///
 /// This builder provides a type-safe, ergonomic API for creating WiFi connection
@@ -91,7 +139,7 @@ impl WifiMode {
 ///     .with_phase2(Phase2::Mschapv2);
 ///
 /// let settings = WifiConnectionBuilder::new("CorpNetwork")
-///     .wpa_eap(eap_opts)
+///     .try_wpa_eap(eap_opts)
 ///     .expect("valid EAP options")
 ///     .autoconnect(false)
 ///     .build();
@@ -123,7 +171,7 @@ impl WifiConnectionBuilder {
     /// Creates a new WiFi connection builder for the specified SSID.
     ///
     /// By default, the connection is configured as an open network. Use
-    /// `.wpa_psk()` or `.wpa_eap()` to add security.
+    /// `.wpa_psk()` or `.try_wpa_eap()` to add security.
     #[must_use]
     pub fn new(ssid: impl Into<String>) -> Self {
         let ssid = ssid.into();
@@ -178,13 +226,50 @@ impl WifiConnectionBuilder {
     ///
     /// Supports PEAP, TTLS, and TLS methods with various inner authentication protocols.
     ///
+    /// If a certificate or private key is supplied as both a path and a blob,
+    /// the path is used and a warning is logged. Prefer
+    /// [`try_wpa_eap`](Self::try_wpa_eap), which reports the conflict as an
+    /// error instead.
+    #[must_use]
+    #[deprecated(
+        since = "3.5.0",
+        note = "use `try_wpa_eap`, which reports conflicting certificate path/blob inputs as an error instead of silently preferring the path"
+    )]
+    pub fn wpa_eap(self, opts: models::EapOptions) -> Self {
+        warn_eap_conflicts(&opts);
+        self.wpa_eap_shared("wpa-eap", opts)
+    }
+
+    /// Configures WPA-EAP (Enterprise) security with 802.1X authentication.
+    ///
+    /// Supports PEAP, TTLS, and TLS methods with various inner authentication protocols.
+    ///
     /// # Errors
     ///
     /// Returns [`ConnectionError::InvalidInput`] when a certificate or private
     /// key is supplied as both a path and a blob.
     #[must_use = "handle the invalid EAP configuration before continuing the builder chain"]
-    pub fn wpa_eap(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
-        self.wpa_eap_shared("wpa-eap", opts)
+    pub fn try_wpa_eap(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
+        validate_eap_opts(&opts)?;
+        Ok(self.wpa_eap_shared("wpa-eap", opts))
+    }
+
+    /// Configures WPA3-EAP (Enterprise) with 192bit security with 802.1X authentication.
+    ///
+    /// Supports only EAP-TLS.
+    ///
+    /// If a certificate or private key is supplied as both a path and a blob,
+    /// the path is used and a warning is logged. Prefer
+    /// [`try_wpa3_eap_192_bit`](Self::try_wpa3_eap_192_bit), which reports the
+    /// conflict as an error instead.
+    #[must_use]
+    #[deprecated(
+        since = "3.5.0",
+        note = "use `try_wpa3_eap_192_bit`, which reports conflicting certificate path/blob inputs as an error instead of silently preferring the path"
+    )]
+    pub fn wpa3_eap_192_bit(self, opts: models::EapOptions) -> Self {
+        warn_eap_conflicts(&opts);
+        self.wpa_eap_shared("wpa-eap-suite-b-192", opts)
     }
 
     /// Configures WPA3-EAP (Enterprise) with 192bit security with 802.1X authentication.
@@ -196,15 +281,12 @@ impl WifiConnectionBuilder {
     /// Returns [`ConnectionError::InvalidInput`] when a certificate or private
     /// key is supplied as both a path and a blob.
     #[must_use = "handle the invalid EAP configuration before continuing the builder chain"]
-    pub fn wpa3_eap_192_bit(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
-        self.wpa_eap_shared("wpa-eap-suite-b-192", opts)
+    pub fn try_wpa3_eap_192_bit(self, opts: models::EapOptions) -> Result<Self, ConnectionError> {
+        validate_eap_opts(&opts)?;
+        Ok(self.wpa_eap_shared("wpa-eap-suite-b-192", opts))
     }
 
-    fn wpa_eap_shared(
-        mut self,
-        key_mgmt: &'static str,
-        opts: models::EapOptions,
-    ) -> Result<Self, ConnectionError> {
+    fn wpa_eap_shared(mut self, key_mgmt: &'static str, opts: models::EapOptions) -> Self {
         let mut security = HashMap::new();
         security.insert("key-mgmt", Value::from(key_mgmt));
         security.insert("auth-alg", Value::from("open"));
@@ -240,7 +322,7 @@ impl WifiConnectionBuilder {
             }
             EapMethod::Tls => {
                 if let Some(cert) =
-                    Self::path_or_blob("private_key", opts.private_key_path, opts.private_key_blob)?
+                    Self::path_or_blob("private_key", opts.private_key_path, opts.private_key_blob)
                 {
                     e1x.insert("private-key", cert);
                 }
@@ -250,7 +332,7 @@ impl WifiConnectionBuilder {
                 }
 
                 if let Some(cert) =
-                    Self::path_or_blob("client_cert", opts.client_cert_path, opts.client_cert_blob)?
+                    Self::path_or_blob("client_cert", opts.client_cert_path, opts.client_cert_blob)
                 {
                     e1x.insert("client-cert", cert);
                 }
@@ -260,7 +342,7 @@ impl WifiConnectionBuilder {
         if opts.system_ca_certs {
             e1x.insert("system-ca-certs", Value::from(true));
         }
-        if let Some(cert) = Self::path_or_blob("ca_cert", opts.ca_cert_path, opts.ca_cert_blob)? {
+        if let Some(cert) = Self::path_or_blob("ca_cert", opts.ca_cert_path, opts.ca_cert_blob) {
             e1x.insert("ca-cert", cert);
         }
         if let Some(dom) = opts.domain_suffix_match {
@@ -269,7 +351,7 @@ impl WifiConnectionBuilder {
 
         self.inner = self.inner.with_section("802-1x", e1x);
         self.security_configured = true;
-        Ok(self)
+        self
     }
 
     /// Marks this network as hidden (doesn't broadcast SSID).
@@ -426,15 +508,16 @@ impl WifiConnectionBuilder {
         attribute: &str,
         path: Option<String>,
         blob: Option<Vec<u8>>,
-    ) -> Result<Option<Value<'static>>, ConnectionError> {
+    ) -> Option<Value<'static>> {
+        // A path/blob conflict is rejected by `validate_eap_opts` on the `try_*`
+        // path and warned about by `warn_eap_conflicts` on the deprecated one,
+        // so preferring the path here is a deterministic last resort rather
+        // than a silent choice.
+        let _ = attribute;
         match (path, blob) {
-            (None, None) => Ok(None),
-            (Some(path), None) => Ok(Some(Self::path(path))),
-            (None, Some(blob)) => Ok(Some(Self::blob(blob))),
-            (Some(_), Some(_)) => Err(ConnectionError::InvalidInput {
-                field: attribute.to_string(),
-                reason: format!("cannot specify both {attribute}_path and {attribute}_blob"),
-            }),
+            (None, None) => None,
+            (Some(path), _) => Some(Self::path(path)),
+            (None, Some(blob)) => Some(Self::blob(blob)),
         }
     }
 
@@ -547,7 +630,7 @@ mod tests {
         };
 
         let settings = WifiConnectionBuilder::new("Enterprise")
-            .wpa_eap(eap_opts)
+            .try_wpa_eap(eap_opts)
             .expect("valid EAP options")
             .autoconnect(false)
             .ipv4_auto()
@@ -574,7 +657,7 @@ mod tests {
         eap_opts.ca_cert_path = Some("file:///etc/ssl/certs/ca.pem".into());
         eap_opts.ca_cert_blob = Some(vec![1, 2, 3]);
 
-        match WifiConnectionBuilder::new("Enterprise").wpa_eap(eap_opts) {
+        match WifiConnectionBuilder::new("Enterprise").try_wpa_eap(eap_opts) {
             Err(ConnectionError::InvalidInput { field, reason }) => {
                 assert_eq!(field, "ca_cert");
                 assert_eq!(reason, "cannot specify both ca_cert_path and ca_cert_blob");
@@ -582,6 +665,33 @@ mod tests {
             Ok(_) => panic!("conflicting EAP certificate inputs should be rejected"),
             Err(error) => panic!("expected InvalidInput, got {error:?}"),
         }
+    }
+
+    /// The deprecated infallible builder cannot report a conflict, so it must
+    /// resolve it deterministically (path wins) rather than panicking, which is
+    /// what it did before #478.
+    #[test]
+    fn deprecated_wpa_eap_prefers_path_over_blob_on_conflict() {
+        let mut eap_opts = EapOptions::new("user@example.com", "secret");
+        eap_opts.ca_cert_path = Some("file:///etc/ssl/certs/ca.pem".into());
+        eap_opts.ca_cert_blob = Some(vec![1, 2, 3]);
+
+        #[allow(deprecated)]
+        let settings = WifiConnectionBuilder::new("Enterprise")
+            .wpa_eap(eap_opts)
+            .ipv4_auto()
+            .build();
+
+        let e1x = settings.get("802-1x").expect("802-1x section");
+        let ca_cert = e1x.get("ca-cert").expect("ca-cert entry");
+        // `path()` encodes as a NUL-terminated byte array; a blob would not
+        // carry the `file://` prefix.
+        let bytes = <Vec<u8>>::try_from(ca_cert.try_clone().expect("clonable"))
+            .expect("ca-cert is a byte array");
+        assert!(
+            bytes.starts_with(b"file:///etc/ssl/certs/ca.pem"),
+            "expected the path to win, got {bytes:?}"
+        );
     }
 
     #[test]

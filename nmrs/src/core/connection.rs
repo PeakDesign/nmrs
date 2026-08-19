@@ -5,7 +5,7 @@ use zbus::Connection;
 use zvariant::OwnedObjectPath;
 
 use crate::Result;
-use crate::api::builders::wifi::{build_ethernet_connection, build_wifi_connection};
+use crate::api::builders::wifi::{build_ethernet_connection, try_build_wifi_connection};
 use crate::api::models::{ConnectionError, ConnectionOptions, TimeoutConfig, WifiSecurity};
 use crate::core::connection_settings::{delete_connection, get_saved_connection_path};
 use crate::core::state_wait::{wait_for_connection_activation, wait_for_device_disconnect};
@@ -776,7 +776,7 @@ async fn connect_via_saved(
                         autoconnect_retries: None,
                     };
 
-                    let settings = build_wifi_connection(ssid, creds, &opts)?;
+                    let settings = try_build_wifi_connection(ssid, creds, &opts)?;
 
                     debug!("Creating fresh connection with corrected settings");
                     let (new_connection, new_active_conn) = nm
@@ -816,7 +816,7 @@ async fn connect_via_saved(
                 autoconnect_retries: None,
             };
 
-            let settings = build_wifi_connection(ssid, creds, &opts)?;
+            let settings = try_build_wifi_connection(ssid, creds, &opts)?;
 
             let (new_connection, active_conn) = nm
                 .add_and_activate_connection(settings, wifi_device.clone(), ap.clone())
@@ -880,7 +880,7 @@ async fn build_and_activate_new(
         autoconnect_priority: None,
     };
 
-    let settings = build_wifi_connection(ssid, &creds, &opts)?;
+    let settings = try_build_wifi_connection(ssid, &creds, &opts)?;
 
     trace!(
         "Creating new connection with {} settings sections",

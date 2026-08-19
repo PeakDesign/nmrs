@@ -132,7 +132,7 @@
 //! The [`builders`] module provides both fluent builder types
 //! ([`builders::ConnectionBuilder`], [`builders::WifiConnectionBuilder`],
 //! [`builders::WireGuardBuilder`], [`builders::OpenVpnBuilder`]) and
-//! free functions (`build_wifi_connection`, `build_ethernet_connection`,
+//! free functions (`try_build_wifi_connection`, `build_ethernet_connection`,
 //! `build_wireguard_connection`, `build_openvpn_connection`,
 //! `build_bluetooth_connection`, `build_vlan_connection`) for constructing
 //! NetworkManager settings dictionaries. Most callers should reach for the
@@ -343,7 +343,7 @@ pub mod raw {
 ///   [`WireGuardBuilder`](builders::WireGuardBuilder), and
 ///   [`OpenVpnBuilder`](builders::OpenVpnBuilder), which support method
 ///   chaining and validation at `.build()`.
-/// - **Free functions** — `build_wifi_connection`, `build_ethernet_connection`,
+/// - **Free functions** — `try_build_wifi_connection`, `build_ethernet_connection`,
 ///   `build_wireguard_connection`, `build_openvpn_connection`,
 ///   `build_bluetooth_connection`, and `build_vlan_connection`, which are
 ///   handy for one-shot construction.
@@ -359,11 +359,11 @@ pub mod raw {
 /// # Example
 ///
 /// ```rust
-/// use nmrs::builders::build_wifi_connection;
+/// use nmrs::builders::try_build_wifi_connection;
 /// use nmrs::{ConnectionOptions, WifiSecurity};
 ///
 /// let opts = ConnectionOptions::new(true);
-/// let settings = build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts)
+/// let settings = try_build_wifi_connection("MyNetwork", &WifiSecurity::Open, &opts)
 ///     .expect("valid Wi-Fi settings");
 /// // `settings` can be passed straight to NetworkManager via D-Bus.
 /// ```

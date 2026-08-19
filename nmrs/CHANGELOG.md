@@ -4,14 +4,26 @@ All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **Breaking:** WPA-EAP connection builders and `build_wifi_connection()` now
-  return `Result`, reporting conflicting certificate path/blob inputs as
-  `ConnectionError::InvalidInput` instead of panicking.
+- `try_build_wifi_connection()`, `WifiConnectionBuilder::try_wpa_eap()`, and
+  `WifiConnectionBuilder::try_wpa3_eap_192_bit()` report conflicting EAP
+  certificate path/blob inputs as `ConnectionError::InvalidInput`.
   ([#478](https://github.com/freedesktop-rs/nmrs/issues/478))
 
+### Deprecated
+
+- `build_wifi_connection()`, `WifiConnectionBuilder::wpa_eap()`, and
+  `WifiConnectionBuilder::wpa3_eap_192_bit()` in favour of their `try_`
+  counterparts. They keep their existing infallible signatures, so no
+  existing code breaks. ([#478](https://github.com/freedesktop-rs/nmrs/issues/478))
+
 ### Fixed
+
+- Supplying an EAP certificate or key as both a path and a blob no longer
+  panics. The `try_` builders return `ConnectionError::InvalidInput`; the
+  deprecated infallible builders use the path and log a warning.
+  ([#478](https://github.com/freedesktop-rs/nmrs/issues/478))
 
 - `get_vpn_info()` no longer surfaces a raw D-Bus error (e.g. "a VPN interface
   does not exist") when a VPN is disconnected externally while it is being read.
@@ -178,12 +190,7 @@ All notable changes to the `nmrs` crate will be documented in this file.
 ### Fixed
 
 - Add `process` feature to tokio to fix build error on some systems
-
-(No changes documented)
-
-## [3.1.2] - 2026-05-14
-
-- `set_bluetooth_radio_enabled` now toggles kernel rfkill before BlueZ adapter `Powered`, fixing airplane-mode state desync with rfkill-based consumers ([#417](https://github.com/freedesktop-rs/nmrs/issues/418))
+- `set_bluetooth_radio_enabled` now toggles kernel rfkill before BlueZ adapter `Powered`, fixing airplane-mode state desync with rfkill-based consumers ([#418](https://github.com/freedesktop-rs/nmrs/issues/418))
 
 ## [3.1.1] - 2026-05-13
 
@@ -297,6 +304,7 @@ present)` constructor; `RadioState::new` keeps existing behavior and defaults
 
 - Concurrency protection ([#268](https://github.com/freedesktop-rs/nmrs/pull/268))
 - Expose `WirelessHardwareEnabled` in API to reflect rkfill state ([#284](https://github.com/freedesktop-rs/nmrs/pull/284))
+- `#[must_use]` attributes across public API: constructors, builder methods, and pure functions ([#220](https://github.com/freedesktop-rs/nmrs/issues/220))
 
 ### Changed
 
@@ -305,12 +313,6 @@ present)` constructor; `RadioState::new` keeps existing behavior and defaults
 ### Fixed
 
 - Let NetworkManager negotiate mixed-mode (WPA1+WPA2) security ([#271](https://github.com/freedesktop-rs/nmrs/pull/271))
-
-## [2.1.0] - 2026-02-28
-
-### Added
-
-- `#[must_use]` attributes across public API: constructors, builder methods, and pure functions ([#220](https://github.com/freedesktop-rs/nmrs/issues/220))
 
 ## [2.0.1] - 2026-02-25
 
@@ -499,30 +501,29 @@ present)` constructor; `RadioState::new` keeps existing behavior and defaults
 
 - EAP connections default to no certificates (advanced certificate management coming in future releases)
 
-[1.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.1.0...nmrs-v1.2.0
-[1.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v1.3.0
-[1.3.5]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.3.0...nmrs-v1.3.5
-[2.0.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.3.5...nmrs-v2.0.0
-[2.0.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.0.0...nmrs-v2.0.1
-[2.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.0.1...nmrs-v2.2.0
-[2.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.2.0...nmrs-v2.3.0
-[2.4.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.3.0...nmrs-v2.4.0
-[3.0.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.4.0...nmrs-v3.0.0
-[3.0.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.0.0...nmrs-v3.0.1
-[3.1.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.0.1...nmrs-v3.1.0
-[3.1.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.0...nmrs-v3.1.1
-[3.1.2]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.1.2
-[3.1.3]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.1.3
-[3.1.4]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.1.4
-[3.1.5]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.1.5
-[3.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.2.0
-[3.2.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.2.1
-[3.2.2]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.2.2
-[3.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.3.0
-[3.4.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.4.0
-[3.4.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.4.1
-[3.4.2]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v3.4.2
 [Unreleased]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.4.2...HEAD
+[3.4.2]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.4.1...nmrs-v3.4.2
+[3.4.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.4.0...nmrs-v3.4.1
+[3.4.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.3.0...nmrs-v3.4.0
+[3.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.2.2...nmrs-v3.3.0
+[3.2.2]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.2.1...nmrs-v3.2.2
+[3.2.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.2.0...nmrs-v3.2.1
+[3.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.5...nmrs-v3.2.0
+[3.1.5]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.4...nmrs-v3.1.5
+[3.1.4]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.3...nmrs-v3.1.4
+[3.1.3]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.1...nmrs-v3.1.3
+[3.1.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.1.0...nmrs-v3.1.1
+[3.1.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.0.1...nmrs-v3.1.0
+[3.0.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v3.0.0...nmrs-v3.0.1
+[3.0.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.4.0...nmrs-v3.0.0
+[2.4.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.3.0...nmrs-v2.4.0
+[2.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.2.0...nmrs-v2.3.0
+[2.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.0.1...nmrs-v2.2.0
+[2.0.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v2.0.0...nmrs-v2.0.1
+[2.0.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.3.5...nmrs-v2.0.0
+[1.3.5]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.3.0...nmrs-v1.3.5
+[1.3.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.2.0...nmrs-v1.3.0
+[1.2.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.1.0...nmrs-v1.2.0
 [1.1.0]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.0.1...nmrs-v1.1.0
 [1.0.1]: https://github.com/freedesktop-rs/nmrs/compare/nmrs-v1.0.0...nmrs-v1.0.1
 [1.0.0]: https://github.com/freedesktop-rs/nmrs/compare/v0.5.0-beta...nmrs-v1.0.0

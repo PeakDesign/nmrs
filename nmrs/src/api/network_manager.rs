@@ -283,7 +283,7 @@ impl NetworkManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use nmrs::builders::{build_wifi_connection, WifiConnectionBuilder, WifiMode};
+    /// use nmrs::builders::{try_build_wifi_connection, WifiConnectionBuilder, WifiMode};
     /// use nmrs::{ConnectionOptions, NetworkManager, WifiSecurity};
     ///
     /// # async fn example() -> nmrs::Result<()> {
@@ -291,7 +291,7 @@ impl NetworkManager {
     ///
     /// // Save a client profile for later activation.
     /// let opts = ConnectionOptions::new(true);
-    /// let settings = build_wifi_connection(
+    /// let settings = try_build_wifi_connection(
     ///     "GuestWiFi",
     ///     &WifiSecurity::WpaPsk { psk: "password".into() },
     ///     &opts,
