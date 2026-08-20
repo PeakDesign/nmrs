@@ -5,12 +5,14 @@ Version bumping script for nmrs.
 This script updates version numbers:
 - nmrs/Cargo.toml
 - nmrs/CHANGELOG.md
+- Cargo.lock
 
 Usage:
     python3 scripts/bump_version.py <version> <release_type>
 """
 
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -85,6 +87,49 @@ def update_cargo_toml(file_path: Path, version: str) -> bool:
     except Exception as e:
         print(f"✗ Error updating {file_path}: {e}")
         return False
+
+
+def update_cargo_lock(project_root: Path, version: str) -> bool:
+    """Refresh Cargo.lock so it records the new workspace version.
+
+    Bumping only Cargo.toml leaves the lock pinned to the previous version, and
+    every job that passes `--locked` then fails with "cannot update the lock
+    file ... because --locked was passed". That is what turned the 3.5.0 release
+    commit red across four CI jobs.
+
+    `--workspace` re-resolves only workspace members, so third-party
+    dependencies keep their currently locked versions.
+    """
+    lock_path = project_root / 'Cargo.lock'
+    if not lock_path.exists():
+        print(f"No Cargo.lock at {lock_path}; skipping refresh")
+        return True
+
+    try:
+        result = subprocess.run(
+            ['cargo', 'update', '--workspace', '--offline'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("✗ `cargo` not found on PATH; cannot refresh Cargo.lock")
+        print("  Run `cargo update --workspace` manually before committing.")
+        return False
+
+    if result.returncode != 0:
+        print("✗ Failed to refresh Cargo.lock")
+        print(f"  {result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ''}")
+        print("  Run `cargo update --workspace` manually before committing.")
+        return False
+
+    if not re.search(rf'^name = "nmrs"\nversion = "{re.escape(version)}"$',
+                     lock_path.read_text(), re.MULTILINE):
+        print(f"✗ Cargo.lock still does not record nmrs {version}")
+        return False
+
+    print(f"✓ Updated {lock_path}")
+    return True
 
 
 def update_changelog(file_path: Path, version: str, release_type: str) -> bool:
@@ -219,6 +264,9 @@ def main():
     else:
         if not update_changelog(changelog_path, version, release_type):
             success = False
+
+    if success and not update_cargo_lock(project_root, version):
+        success = False
 
     print("=" * 50)
 
