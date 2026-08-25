@@ -10,10 +10,10 @@ use nmrs::agent::{SecretAgent, SecretAgentFlags, SecretAgentHandle, SecretSettin
 use nmrs::builders::WireGuardBuilder;
 use nmrs::raw::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use nmrs::{
-    ActiveConnection, ActiveConnectionState, ConnectionError, DeviceState, MonitorHandle,
-    NetworkEvent, NetworkEventStream, NetworkManager, SettingsChange, SettingsEventStream,
-    SettingsPatch, SettingsSummary, TimeoutConfig, WifiKeyMgmt, WifiScope, WifiSecurity,
-    WireGuardPeer,
+    ActiveConnection, ActiveConnectionState, ConnectByUuidConfig, ConnectionError, DeviceState,
+    MonitorHandle, NetworkEvent, NetworkEventStream, NetworkManager, SettingsChange,
+    SettingsEventStream, SettingsPatch, SettingsSummary, TimeoutConfig, WifiKeyMgmt, WifiScope,
+    WifiSecurity, WireGuardPeer,
 };
 use serial_test::serial;
 use tokio::time::{sleep, timeout};
@@ -1057,7 +1057,7 @@ async fn wired_connection_lifecycle() {
         bounded(
             "connect the managed veth client by uuid",
             DBUS_TIMEOUT,
-            nm.connect_by_uuid(&saved_uuid),
+            nm.connect_by_uuid(&saved_uuid, ConnectByUuidConfig::default()),
         )
         .await
         .expect("activation by uuid failed");

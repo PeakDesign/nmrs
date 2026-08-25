@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use zbus::Connection;
 use zvariant::OwnedObjectPath;
 
-use crate::Result;
 use crate::api::models::{
     ConnectionError, ConnectionOptions, DeviceState, OpenVpnConnectionType, TimeoutConfig,
     VpnConfig, VpnConnection, VpnConnectionInfo, VpnCredentials, VpnDetails, VpnKind,
@@ -27,6 +26,7 @@ use crate::util::utils::{extract_connection_state_reason, nm_proxy, settings_pro
 use crate::util::validation::{
     validate_connection_name, validate_openvpn_config, validate_vpn_credentials,
 };
+use crate::{ConnectByUuidConfig, Result};
 
 /// Detects whether a saved connection is a VPN and what kind.
 fn detect_vpn_kind(
@@ -594,7 +594,15 @@ pub(crate) async fn connect_vpn_by_id(
 
     match matches.len() {
         0 => Err(ConnectionError::VpnNotFound(id.to_string())),
-        1 => connect_by_uuid(conn, &matches[0].uuid, timeout_config).await,
+        1 => {
+            connect_by_uuid(
+                conn,
+                &matches[0].uuid,
+                ConnectByUuidConfig::default(),
+                timeout_config,
+            )
+            .await
+        }
         _ => Err(ConnectionError::VpnIdAmbiguous(id.to_string())),
     }
 }

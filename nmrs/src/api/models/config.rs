@@ -202,3 +202,34 @@ impl ConnectionOptions {
         self
     }
 }
+
+/// Connection options for activating a connection by UUID
+///
+/// Allows the connection interface to be overridden
+///
+/// # Examples
+///
+/// ```rust
+/// use nmrs::ConnectByUuidConfig;
+///
+/// // Use the interface stored in the connection
+/// let config = ConnectByUuidConfig::default();
+///
+/// // Override the interface
+/// let config = ConnectByUuidConfig::default()
+///     .with_interface("wlan0");
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConnectByUuidConfig<'a> {
+    pub interface: Option<&'a str>,
+}
+
+impl<'a> ConnectByUuidConfig<'a> {
+    /// Sets the interface
+    #[must_use]
+    pub fn with_interface(mut self, interface: &'a str) -> Self {
+        self.interface = Some(interface);
+        self
+    }
+}

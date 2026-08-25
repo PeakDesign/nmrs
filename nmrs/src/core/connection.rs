@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use zbus::Connection;
 use zvariant::OwnedObjectPath;
 
-use crate::Result;
 use crate::api::builders::wifi::{build_ethernet_connection, try_build_wifi_connection};
 use crate::api::models::{ConnectionError, ConnectionOptions, TimeoutConfig, WifiSecurity};
 use crate::core::connection_settings::{delete_connection, get_saved_connection_path};
@@ -17,6 +16,7 @@ use crate::types::constants::{device_state, device_type, timeouts};
 use crate::types::device_type_registry;
 use crate::util::utils::{decode_ssid_or_empty, nm_proxy};
 use crate::util::validation::{validate_bssid, validate_ssid, validate_wifi_security};
+use crate::{ConnectByUuidConfig, Result};
 
 /// Decision on whether to reuse a saved connection or create a fresh one.
 #[derive(Debug, PartialEq, Eq)]
@@ -125,6 +125,7 @@ pub(crate) async fn connect(
 pub(crate) async fn connect_by_uuid(
     conn: &Connection,
     uuid: &str,
+    connect_config: ConnectByUuidConfig<'_>,
     timeout_config: Option<TimeoutConfig>,
 ) -> Result<()> {
     let nm = NMProxy::new(conn).await?;
@@ -143,12 +144,13 @@ pub(crate) async fn connect_by_uuid(
 
     let conn_path: OwnedObjectPath = reply.body().deserialize()?;
 
+    let device = match connect_config.interface {
+        Some(interface) => get_device_by_interface(conn, interface).await?,
+        None => OwnedObjectPath::default(),
+    };
+
     let active_conn = nm
-        .activate_connection(
-            conn_path,
-            OwnedObjectPath::default(),
-            OwnedObjectPath::default(),
-        )
+        .activate_connection(conn_path, device, OwnedObjectPath::default())
         .await?;
 
     let timeout = timeout_config.map(|c| c.connection_timeout);

@@ -5,7 +5,6 @@ use tokio::sync::{Mutex, oneshot, watch};
 use zbus::Connection;
 use zvariant::OwnedValue;
 
-use crate::Result;
 use crate::api::models::access_point::AccessPoint;
 use crate::api::models::snapshot::{
     saved_vpn_profiles as filter_saved_vpn_profiles,
@@ -53,6 +52,7 @@ use crate::monitoring::network as network_monitor;
 use crate::monitoring::settings as settings_monitor;
 use crate::monitoring::wifi::{current_connection_info, current_ssid};
 use crate::types::constants::device_type;
+use crate::{ConnectByUuidConfig, Result};
 
 /// High-level interface to NetworkManager over D-Bus.
 ///
@@ -632,17 +632,24 @@ impl NetworkManager {
     /// # Example
     ///
     /// ```no_run
-    /// use nmrs::NetworkManager;
+    /// use nmrs::{ConnectByUuidConfig, NetworkManager};
     ///
     /// # async fn example() -> nmrs::Result<()> {
     /// let nm = NetworkManager::new().await?;
-    /// nm.connect_by_uuid("2c3f1234-abcd-5678-ef01-234567890abc").await?;
+    /// // Use the stored interface
+    /// nm.connect_by_uuid("2c3f1234-abcd-5678-ef01-234567890abc", ConnectByUuidConfig::default()).await?;
+    /// // Override the interface
+    /// nm.connect_by_uuid("2c3f1234-abcd-5678-ef01-234567890abc", ConnectByUuidConfig::default().with_interface("wlan0")).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn connect_by_uuid(&self, uuid: &str) -> Result<()> {
+    pub async fn connect_by_uuid(
+        &self,
+        uuid: &str,
+        connect_config: ConnectByUuidConfig<'_>,
+    ) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
-        connect_by_uuid(&self.conn, uuid, Some(self.timeout_config)).await
+        connect_by_uuid(&self.conn, uuid, connect_config, Some(self.timeout_config)).await
     }
 
     /// Disconnect a connection by UUID.
@@ -879,12 +886,17 @@ impl NetworkManager {
     #[deprecated(note = "Use `connect_by_uuid` instead")]
     pub async fn connect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
-        connect_by_uuid(&self.conn, uuid, Some(self.timeout_config))
-            .await
-            .map_err(|e| match e {
-                ConnectionError::SavedConnectionNotFound(id) => ConnectionError::VpnNotFound(id),
-                other => other,
-            })
+        connect_by_uuid(
+            &self.conn,
+            uuid,
+            ConnectByUuidConfig::default(),
+            Some(self.timeout_config),
+        )
+        .await
+        .map_err(|e| match e {
+            ConnectionError::SavedConnectionNotFound(id) => ConnectionError::VpnNotFound(id),
+            other => other,
+        })
     }
 
     /// Activate a saved VPN by connection display name.
