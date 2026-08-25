@@ -121,6 +121,71 @@ pub(crate) async fn connect(
     Ok(())
 }
 
+/// Activate a saved connection by UUID.
+pub(crate) async fn connect_by_uuid(
+    conn: &Connection,
+    uuid: &str,
+    timeout_config: Option<TimeoutConfig>,
+) -> Result<()> {
+    let nm = NMProxy::new(conn).await?;
+
+    let settings_proxy = nm_proxy(
+        conn,
+        "/org/freedesktop/NetworkManager/Settings",
+        "org.freedesktop.NetworkManager.Settings",
+    )
+    .await?;
+
+    let reply = settings_proxy
+        .call_method("GetConnectionByUuid", &(uuid,))
+        .await
+        .map_err(|_| ConnectionError::SavedConnectionNotFound(uuid.to_string()))?;
+
+    let conn_path: OwnedObjectPath = reply.body().deserialize()?;
+
+    let active_conn = nm
+        .activate_connection(
+            conn_path,
+            OwnedObjectPath::default(),
+            OwnedObjectPath::default(),
+        )
+        .await?;
+
+    let timeout = timeout_config.map(|c| c.connection_timeout);
+    wait_for_connection_activation(conn, &active_conn, timeout).await
+}
+
+/// Disconnect a connection by UUID.
+pub(crate) async fn disconnect_by_uuid(conn: &Connection, uuid: &str) -> Result<()> {
+    let nm = NMProxy::new(conn).await?;
+    let active_conns = nm.active_connections().await.unwrap_or_default();
+
+    for ac_path in active_conns {
+        let ac_proxy = match nm_proxy(
+            conn,
+            ac_path.clone(),
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let ac_uuid: String = match ac_proxy.get_property("Uuid").await {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+
+        if ac_uuid == uuid {
+            nm.deactivate_connection(ac_path).await?;
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
 /// Connects to a wired (Ethernet) device.
 ///
 /// This is the main entry point for establishing a wired connection. The flow:

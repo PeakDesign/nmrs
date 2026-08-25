@@ -21,8 +21,8 @@ use crate::core::active_connection as active_connections;
 use crate::core::airplane;
 use crate::core::bluetooth::connect_bluetooth;
 use crate::core::connection::{
-    connect, connect_to_bssid, connect_wired, disconnect, forget_by_name_and_type,
-    get_device_by_interface, is_connected,
+    connect, connect_by_uuid, connect_to_bssid, connect_wired, disconnect, disconnect_by_uuid,
+    forget_by_name_and_type, get_device_by_interface, is_connected,
 };
 use crate::core::connection_settings::{
     get_saved_connection_path, get_saved_connection_uuid, has_saved_connection,
@@ -38,8 +38,8 @@ use crate::core::device::{
 use crate::core::saved_connection as saved_profiles;
 use crate::core::scan::{current_network, list_access_points, list_networks, scan_networks};
 use crate::core::vpn::{
-    active_vpn_connections, connect_vpn, connect_vpn_by_id, connect_vpn_by_uuid, disconnect_vpn,
-    disconnect_vpn_by_uuid, get_vpn_info, list_vpn_connections,
+    active_vpn_connections, connect_vpn, connect_vpn_by_id, disconnect_vpn, get_vpn_info,
+    list_vpn_connections,
 };
 use crate::core::wifi_device::{list_wifi_devices, set_wifi_enabled_for_interface};
 use crate::models::{
@@ -627,6 +627,30 @@ impl NetworkManager {
         .await
     }
 
+    /// Activate a saved connection by UUID.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use nmrs::NetworkManager;
+    ///
+    /// # async fn example() -> nmrs::Result<()> {
+    /// let nm = NetworkManager::new().await?;
+    /// nm.connect_by_uuid("2c3f1234-abcd-5678-ef01-234567890abc").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn connect_by_uuid(&self, uuid: &str) -> Result<()> {
+        let _guard = self.connect_guard.lock().await;
+        connect_by_uuid(&self.conn, uuid, Some(self.timeout_config)).await
+    }
+
+    /// Disconnect a connection by UUID.
+    pub async fn disconnect_by_uuid(&self, uuid: &str) -> Result<()> {
+        let _guard = self.connect_guard.lock().await;
+        disconnect_by_uuid(&self.conn, uuid).await
+    }
+
     /// Connects to a wired (Ethernet) device.
     ///
     /// Finds the first available wired device and either activates an existing
@@ -852,9 +876,15 @@ impl NetworkManager {
     /// # Ok(())
     /// # }
     /// ```
+    #[deprecated(note = "Use `connect_by_uuid` instead")]
     pub async fn connect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
-        connect_vpn_by_uuid(&self.conn, uuid, Some(self.timeout_config)).await
+        connect_by_uuid(&self.conn, uuid, Some(self.timeout_config))
+            .await
+            .map_err(|e| match e {
+                ConnectionError::SavedConnectionNotFound(id) => ConnectionError::VpnNotFound(id),
+                other => other,
+            })
     }
 
     /// Activate a saved VPN by connection display name.
@@ -867,9 +897,10 @@ impl NetworkManager {
     }
 
     /// Disconnect a VPN by UUID.
+    #[deprecated(note = "Use `disconnect_by_uuid` instead")]
     pub async fn disconnect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
-        disconnect_vpn_by_uuid(&self.conn, uuid).await
+        disconnect_by_uuid(&self.conn, uuid).await
     }
 
     /// Forgets (deletes) a saved VPN connection by name.

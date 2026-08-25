@@ -183,7 +183,13 @@ async fn cleanup_wired_profile(nm: &NetworkManager, interface: &str) -> Vec<Stri
 
 async fn cleanup_vpn_profile(nm: &NetworkManager, uuid: &str) -> Vec<String> {
     let mut failures = Vec::new();
-    match timeout(DBUS_TIMEOUT, nm.disconnect_vpn_by_uuid(uuid)).await {
+    match timeout(
+        DBUS_TIMEOUT,
+        #[allow(deprecated)]
+        nm.disconnect_vpn_by_uuid(uuid),
+    )
+    .await
+    {
         Ok(Ok(())) => {}
         Ok(Err(ConnectionError::VpnNotFound(missing))) if missing == uuid => {}
         Ok(Err(error)) => failures.push(format!("disconnect VPN {uuid}: {error}")),
@@ -657,7 +663,7 @@ async fn networkmanager_secret_agent_registration_lifecycle() {
         let missing_error = bounded(
             "reject activation of a missing VPN UUID",
             DBUS_TIMEOUT,
-            nm.connect_vpn_by_uuid(&missing_uuid),
+            #[allow(deprecated)] nm.connect_vpn_by_uuid(&missing_uuid),
         )
         .await
         .expect_err("activation of a missing VPN UUID must fail");
@@ -752,7 +758,7 @@ async fn networkmanager_secret_agent_registration_lifecycle() {
         bounded(
             "activate the configured WireGuard profile",
             WIFI_TIMEOUT,
-            nm.connect_vpn_by_uuid(&profile_uuid),
+            #[allow(deprecated)] nm.connect_vpn_by_uuid(&profile_uuid),
         )
         .await
         .expect("WireGuard activation failed after persisting the agent-provided key");
@@ -814,7 +820,7 @@ async fn networkmanager_secret_agent_registration_lifecycle() {
         bounded(
             "deactivate the WireGuard VPN",
             DBUS_TIMEOUT,
-            nm.disconnect_vpn_by_uuid(&profile_uuid),
+            #[allow(deprecated)] nm.disconnect_vpn_by_uuid(&profile_uuid),
         )
         .await
         .expect("failed to deactivate the WireGuard VPN");
@@ -1041,6 +1047,47 @@ async fn wired_connection_lifecycle() {
         )
         .await
         .expect("failed to read disconnected wired details");
+        let disconnected = disconnected_details
+            .iter()
+            .find(|device| device.interface == interface)
+            .expect("disconnected veth was absent from detailed wired devices");
+        assert_eq!(disconnected.state, DeviceState::Disconnected);
+        assert!(disconnected.active_connection_id.is_none());
+
+        bounded(
+            "connect the managed veth client by uuid",
+            DBUS_TIMEOUT,
+            nm.connect_by_uuid(&saved_uuid),
+        )
+        .await
+        .expect("activation by uuid failed");
+        let active = active_connections(&nm).await;
+        let active_wired = active
+            .iter()
+            .find_map(|connection| match connection {
+                ActiveConnection::Wired(wired) if wired.uuid == saved_uuid => Some(wired.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                panic!("typed active connections omitted the veth connection: {active:?}")
+            });
+        assert_eq!(active_wired.state, ActiveConnectionState::Activated);
+
+        bounded(
+            "disconnect the managed veth client by uuid",
+            DBUS_TIMEOUT,
+            nm.disconnect_by_uuid(&saved_uuid),
+        )
+        .await
+        .expect("deactivation by uuid failed");
+        let disconnected_details = bounded(
+            "read disconnected wired details",
+            DBUS_TIMEOUT,
+            nm.list_wired_device_details(),
+        )
+        .await
+        .expect("failed to read disconnected wired details");
+
         let disconnected = disconnected_details
             .iter()
             .find(|device| device.interface == interface)
