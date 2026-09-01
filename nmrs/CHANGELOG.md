@@ -3,6 +3,27 @@
 All notable changes to the `nmrs` crate will be documented in this file.
 
 ## [Unreleased]
+### Added
+
+- `connect_by_uuid()` and `disconnect_by_uuid()` activate and deactivate any
+  saved connection by UUID, not just VPN profiles. `connect_by_uuid()` takes a
+  `ConnectByUuidConfig` so the interface stored in the profile can be
+  overridden. ([#531](https://github.com/freedesktop-rs/nmrs/pull/531))
+
+### Deprecated
+
+- `connect_vpn_by_uuid()` and `disconnect_vpn_by_uuid()` in favour of
+  `connect_by_uuid()` and `disconnect_by_uuid()`. Neither carried VPN-specific
+  logic. Both keep their existing signatures and error behaviour, so no
+  existing code breaks. ([#531](https://github.com/freedesktop-rs/nmrs/pull/531))
+
+### Fixed
+
+- `disconnect_vpn_by_uuid()` again returns `Ok(())` when no saved connection
+  matches the UUID. Delegating to `disconnect_by_uuid()` leaked that case out
+  as `ConnectionError::SavedConnectionNotFound`, which callers of the
+  deprecated method had no reason to expect.
+  ([#531](https://github.com/freedesktop-rs/nmrs/pull/531))
 
 ## [3.5.0] - 2026-08-19
 ### Added
