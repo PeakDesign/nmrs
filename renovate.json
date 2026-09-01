@@ -4,5 +4,15 @@
   "cargo": {
     "rangeStrategy": "bump",
     "rebaseWhen": "behind-base-branch"
-  }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track cargo tool versions pinned in taiki-e/install-action, which config:recommended does not read",
+      "managerFilePatterns": [".github/workflows/*.yml"],
+      "matchStrings": ["tool:\\s*(?<depName>cargo-[\\w-]+)@(?<currentValue>[\\d.]+)"],
+      "datasourceTemplate": "crate",
+      "versioningTemplate": "semver-coerced"
+    }
+  ]
 }
