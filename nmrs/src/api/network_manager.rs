@@ -883,7 +883,7 @@ impl NetworkManager {
     /// # Ok(())
     /// # }
     /// ```
-    #[deprecated(note = "Use `connect_by_uuid` instead")]
+    #[deprecated(since = "3.6.0", note = "Use `connect_by_uuid` instead")]
     pub async fn connect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
         connect_by_uuid(
@@ -909,7 +909,7 @@ impl NetworkManager {
     }
 
     /// Disconnect a VPN by UUID.
-    #[deprecated(note = "Use `disconnect_by_uuid` instead")]
+    #[deprecated(since = "3.6.0", note = "Use `disconnect_by_uuid` instead")]
     pub async fn disconnect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
         disconnect_by_uuid(&self.conn, uuid).await

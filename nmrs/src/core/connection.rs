@@ -14,7 +14,7 @@ use crate::monitoring::transport::ActiveTransport;
 use crate::monitoring::wifi::Wifi;
 use crate::types::constants::{device_state, device_type, timeouts};
 use crate::types::device_type_registry;
-use crate::util::utils::{decode_ssid_or_empty, nm_proxy};
+use crate::util::utils::{decode_ssid_or_empty, nm_proxy, settings_proxy};
 use crate::util::validation::{validate_bssid, validate_ssid, validate_wifi_security};
 use crate::{ConnectByUuidConfig, Result};
 
@@ -130,22 +130,19 @@ pub(crate) async fn connect_by_uuid(
 ) -> Result<()> {
     let nm = NMProxy::new(conn).await?;
 
-    let settings_proxy = nm_proxy(
-        conn,
-        "/org/freedesktop/NetworkManager/Settings",
-        "org.freedesktop.NetworkManager.Settings",
-    )
-    .await?;
+    let settings_proxy = settings_proxy(conn).await?;
 
-    let reply = settings_proxy
-        .call_method("GetConnectionByUuid", &(uuid,))
-        .await
-        .map_err(|_| ConnectionError::SavedConnectionNotFound(uuid.to_string()))?;
-
-    let conn_path: OwnedObjectPath = reply.body().deserialize()?;
+    let conn_path = get_connection_path_by_uuid(&settings_proxy, uuid).await?;
 
     let device = match connect_config.interface {
-        Some(interface) => get_device_by_interface(conn, interface).await?,
+        Some(interface) => get_device_by_interface(conn, interface)
+            .await
+            .map_err(|e| match e {
+                ConnectionError::NotFound => {
+                    ConnectionError::InterfaceNotFound(interface.to_string())
+                }
+                other => other,
+            })?,
         None => OwnedObjectPath::default(),
     };
 
@@ -185,7 +182,26 @@ pub(crate) async fn disconnect_by_uuid(conn: &Connection, uuid: &str) -> Result<
         }
     }
 
-    Ok(())
+    let settings_proxy = settings_proxy(conn).await?;
+
+    get_connection_path_by_uuid(&settings_proxy, uuid)
+        .await
+        .map(|_| ())
+}
+
+/// Get the `OwnedObjectPath` of a connection by its UUID. Returns `ConnectionError::SavedConnectionNotFound` on error
+pub(crate) async fn get_connection_path_by_uuid(
+    proxy: &zbus::Proxy<'_>,
+    uuid: &str,
+) -> Result<OwnedObjectPath> {
+    let reply = proxy
+        .call_method("GetConnectionByUuid", &(uuid,))
+        .await
+        .map_err(|_| ConnectionError::SavedConnectionNotFound(uuid.to_string()))?;
+
+    let conn_path = reply.body().deserialize()?;
+
+    Ok(conn_path)
 }
 
 /// Connects to a wired (Ethernet) device.

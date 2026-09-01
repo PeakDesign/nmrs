@@ -594,15 +594,17 @@ pub(crate) async fn connect_vpn_by_id(
 
     match matches.len() {
         0 => Err(ConnectionError::VpnNotFound(id.to_string())),
-        1 => {
-            connect_by_uuid(
-                conn,
-                &matches[0].uuid,
-                ConnectByUuidConfig::default(),
-                timeout_config,
-            )
-            .await
-        }
+        1 => connect_by_uuid(
+            conn,
+            &matches[0].uuid,
+            ConnectByUuidConfig::default(),
+            timeout_config,
+        )
+        .await
+        .map_err(|e| match e {
+            ConnectionError::SavedConnectionNotFound(id) => ConnectionError::VpnNotFound(id),
+            other => other,
+        }),
         _ => Err(ConnectionError::VpnIdAmbiguous(id.to_string())),
     }
 }
