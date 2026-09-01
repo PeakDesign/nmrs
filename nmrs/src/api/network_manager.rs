@@ -909,10 +909,19 @@ impl NetworkManager {
     }
 
     /// Disconnect a VPN by UUID.
+    ///
+    /// Returns `Ok(())` when no saved connection matches `uuid`, preserving the
+    /// behaviour this method had before it delegated to
+    /// [`disconnect_by_uuid`](Self::disconnect_by_uuid), which reports the
+    /// missing profile as
+    /// [`SavedConnectionNotFound`](crate::ConnectionError::SavedConnectionNotFound).
     #[deprecated(since = "3.6.0", note = "Use `disconnect_by_uuid` instead")]
     pub async fn disconnect_vpn_by_uuid(&self, uuid: &str) -> Result<()> {
         let _guard = self.connect_guard.lock().await;
-        disconnect_by_uuid(&self.conn, uuid).await
+        match disconnect_by_uuid(&self.conn, uuid).await {
+            Err(ConnectionError::SavedConnectionNotFound(_)) => Ok(()),
+            other => other,
+        }
     }
 
     /// Forgets (deletes) a saved VPN connection by name.
