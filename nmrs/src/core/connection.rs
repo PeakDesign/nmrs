@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use zbus::Connection;
 use zvariant::OwnedObjectPath;
 
-use crate::Result;
 use crate::api::builders::wifi::{build_ethernet_connection, try_build_wifi_connection};
 use crate::api::models::{ConnectionError, ConnectionOptions, TimeoutConfig, WifiSecurity};
 use crate::core::connection_settings::{delete_connection, get_saved_connection_path};
@@ -15,8 +14,9 @@ use crate::monitoring::transport::ActiveTransport;
 use crate::monitoring::wifi::Wifi;
 use crate::types::constants::{device_state, device_type, timeouts};
 use crate::types::device_type_registry;
-use crate::util::utils::{decode_ssid_or_empty, nm_proxy};
+use crate::util::utils::{decode_ssid_or_empty, nm_proxy, settings_proxy};
 use crate::util::validation::{validate_bssid, validate_ssid, validate_wifi_security};
+use crate::{ConnectByUuidConfig, Result};
 
 /// Decision on whether to reuse a saved connection or create a fresh one.
 #[derive(Debug, PartialEq, Eq)]
@@ -119,6 +119,89 @@ pub(crate) async fn connect(
     info!("Successfully connected to '{ssid}'");
 
     Ok(())
+}
+
+/// Activate a saved connection by UUID.
+pub(crate) async fn connect_by_uuid(
+    conn: &Connection,
+    uuid: &str,
+    connect_config: ConnectByUuidConfig<'_>,
+    timeout_config: Option<TimeoutConfig>,
+) -> Result<()> {
+    let nm = NMProxy::new(conn).await?;
+
+    let settings_proxy = settings_proxy(conn).await?;
+
+    let conn_path = get_connection_path_by_uuid(&settings_proxy, uuid).await?;
+
+    let device = match connect_config.interface {
+        Some(interface) => get_device_by_interface(conn, interface)
+            .await
+            .map_err(|e| match e {
+                ConnectionError::NotFound => {
+                    ConnectionError::InterfaceNotFound(interface.to_string())
+                }
+                other => other,
+            })?,
+        None => OwnedObjectPath::default(),
+    };
+
+    let active_conn = nm
+        .activate_connection(conn_path, device, OwnedObjectPath::default())
+        .await?;
+
+    let timeout = timeout_config.map(|c| c.connection_timeout);
+    wait_for_connection_activation(conn, &active_conn, timeout).await
+}
+
+/// Disconnect a connection by UUID.
+pub(crate) async fn disconnect_by_uuid(conn: &Connection, uuid: &str) -> Result<()> {
+    let nm = NMProxy::new(conn).await?;
+    let active_conns = nm.active_connections().await.unwrap_or_default();
+
+    for ac_path in active_conns {
+        let ac_proxy = match nm_proxy(
+            conn,
+            ac_path.clone(),
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let ac_uuid: String = match ac_proxy.get_property("Uuid").await {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+
+        if ac_uuid == uuid {
+            nm.deactivate_connection(ac_path).await?;
+            return Ok(());
+        }
+    }
+
+    let settings_proxy = settings_proxy(conn).await?;
+
+    get_connection_path_by_uuid(&settings_proxy, uuid)
+        .await
+        .map(|_| ())
+}
+
+/// Get the `OwnedObjectPath` of a connection by its UUID. Returns `ConnectionError::SavedConnectionNotFound` on error
+pub(crate) async fn get_connection_path_by_uuid(
+    proxy: &zbus::Proxy<'_>,
+    uuid: &str,
+) -> Result<OwnedObjectPath> {
+    let reply = proxy
+        .call_method("GetConnectionByUuid", &(uuid,))
+        .await
+        .map_err(|_| ConnectionError::SavedConnectionNotFound(uuid.to_string()))?;
+
+    let conn_path = reply.body().deserialize()?;
+
+    Ok(conn_path)
 }
 
 /// Connects to a wired (Ethernet) device.

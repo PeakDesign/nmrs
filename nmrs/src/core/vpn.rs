@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use zbus::Connection;
 use zvariant::OwnedObjectPath;
 
-use crate::Result;
 use crate::api::models::{
     ConnectionError, ConnectionOptions, DeviceState, OpenVpnConnectionType, TimeoutConfig,
     VpnConfig, VpnConnection, VpnConnectionInfo, VpnCredentials, VpnDetails, VpnKind,
@@ -19,6 +18,7 @@ use crate::api::models::{
 };
 use crate::builders::{build_openvpn_connection, build_wireguard_connection};
 use crate::core::active_connection::is_missing_dbus_object_error;
+use crate::core::connection::connect_by_uuid;
 use crate::core::state_wait::wait_for_connection_activation;
 use crate::dbus::{NMActiveConnectionProxy, NMProxy};
 use crate::models::VpnConfiguration;
@@ -26,6 +26,7 @@ use crate::util::utils::{extract_connection_state_reason, nm_proxy, settings_pro
 use crate::util::validation::{
     validate_connection_name, validate_openvpn_config, validate_vpn_credentials,
 };
+use crate::{ConnectByUuidConfig, Result};
 
 /// Detects whether a saved connection is a VPN and what kind.
 fn detect_vpn_kind(
@@ -582,40 +583,6 @@ async fn build_active_vpn_map(
     map
 }
 
-/// Activate a saved VPN by UUID.
-pub(crate) async fn connect_vpn_by_uuid(
-    conn: &Connection,
-    uuid: &str,
-    timeout_config: Option<TimeoutConfig>,
-) -> Result<()> {
-    let nm = NMProxy::new(conn).await?;
-
-    let settings_proxy = nm_proxy(
-        conn,
-        "/org/freedesktop/NetworkManager/Settings",
-        "org.freedesktop.NetworkManager.Settings",
-    )
-    .await?;
-
-    let reply = settings_proxy
-        .call_method("GetConnectionByUuid", &(uuid,))
-        .await
-        .map_err(|_| ConnectionError::VpnNotFound(uuid.to_string()))?;
-
-    let conn_path: OwnedObjectPath = reply.body().deserialize()?;
-
-    let active_conn = nm
-        .activate_connection(
-            conn_path,
-            OwnedObjectPath::default(),
-            OwnedObjectPath::default(),
-        )
-        .await?;
-
-    let timeout = timeout_config.map(|c| c.connection_timeout);
-    wait_for_connection_activation(conn, &active_conn, timeout).await
-}
-
 /// Activate a saved VPN by connection id (display name).
 pub(crate) async fn connect_vpn_by_id(
     conn: &Connection,
@@ -627,40 +594,19 @@ pub(crate) async fn connect_vpn_by_id(
 
     match matches.len() {
         0 => Err(ConnectionError::VpnNotFound(id.to_string())),
-        1 => connect_vpn_by_uuid(conn, &matches[0].uuid, timeout_config).await,
-        _ => Err(ConnectionError::VpnIdAmbiguous(id.to_string())),
-    }
-}
-
-/// Disconnect a VPN by UUID.
-pub(crate) async fn disconnect_vpn_by_uuid(conn: &Connection, uuid: &str) -> Result<()> {
-    let nm = NMProxy::new(conn).await?;
-    let active_conns = nm.active_connections().await.unwrap_or_default();
-
-    for ac_path in active_conns {
-        let ac_proxy = match nm_proxy(
+        1 => connect_by_uuid(
             conn,
-            ac_path.clone(),
-            "org.freedesktop.NetworkManager.Connection.Active",
+            &matches[0].uuid,
+            ConnectByUuidConfig::default(),
+            timeout_config,
         )
         .await
-        {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        let ac_uuid: String = match ac_proxy.get_property("Uuid").await {
-            Ok(u) => u,
-            Err(_) => continue,
-        };
-
-        if ac_uuid == uuid {
-            nm.deactivate_connection(ac_path).await?;
-            return Ok(());
-        }
+        .map_err(|e| match e {
+            ConnectionError::SavedConnectionNotFound(id) => ConnectionError::VpnNotFound(id),
+            other => other,
+        }),
+        _ => Err(ConnectionError::VpnIdAmbiguous(id.to_string())),
     }
-
-    Ok(())
 }
 
 /// Connects to a VPN (WireGuard or OpenVPN) from configuration.

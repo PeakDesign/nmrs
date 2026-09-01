@@ -276,4 +276,8 @@ pub enum ConnectionError {
         /// Why the input was invalid.
         reason: String,
     },
+
+    /// No interface was found with the given name
+    #[error("no interface named '{0}'")]
+    InterfaceNotFound(String),
 }
